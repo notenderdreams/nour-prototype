@@ -1,0 +1,11 @@
+#include "nour.h"
+
+Project project = {
+    .name = "test_build",
+    .version = "0.1.0",
+    .sources = (char*[]){"Sandbox/basic.c", "Sandbox/another.c", NULL},
+    .cc = "gcc",
+    .build_dir = "build",
+    .output_name = "sandbox_app",
+    .cflags = (char*[]){"-Wall", "-Wextra", NULL}
+};
