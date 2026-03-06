@@ -1,21 +1,32 @@
 #include "compile.h"
+#include "nstr.h"
+#include "arena.h"
 #include "utils.h"
 
-#include <limits.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
-#define COMMAND_MAX 8192
+static int ensure_directory(const char *path) {
+    if (mkdir(path, 0755) == 0) {
+        return 0;
+    }
 
-static int append_token(char *command, size_t command_size, const char *token) {
-    size_t used = strlen(command);
-    int written = snprintf(command + used, command_size - used, " %s", token);
-    return (written < 0 || (size_t)written >= command_size - used) ? -1 : 0;
+    if (errno == EEXIST) {
+        return 0;
+    }
+
+    perror("mkdir failed");
+    return -1;
 }
 
 int compile_project(const Project *project) {
+    int result = 1;
+    Arena *arena = NULL;
+
     if (project == NULL || project->cc == NULL || project->build_dir == NULL || project->sources == NULL) {
         fprintf(stderr, "Invalid project configuration.\n");
         return 1;
@@ -25,51 +36,83 @@ int compile_project(const Project *project) {
         return 1;
     }
 
+    // Create arena for string building (8KB initial)
+    arena = arena_create(8192);
+    if (!arena) {
+        fprintf(stderr, "Failed to create arena for string building.\n");
+        return 1;
+    }
+
     const char *output_name = project->output_name != NULL ? project->output_name : project->name;
     if (output_name == NULL) {
         output_name = "sandbox_app";
     }
 
-    char output_path[PATH_MAX];
-    if (snprintf(output_path, sizeof(output_path), "%s/%s", project->build_dir, output_name) >= (int)sizeof(output_path)) {
-        fprintf(stderr, "Output path is too long.\n");
-        return 1;
+    // Build output path using arena
+    nstr build_dir_str = nstr_from(arena, project->build_dir);
+    nstr slash = nstr_from(arena, "/");
+    nstr output_name_str = nstr_from(arena, output_name);
+    if (build_dir_str.data == NULL || slash.data == NULL || output_name_str.data == NULL) {
+        fprintf(stderr, "Failed to allocate output path components.\n");
+        goto cleanup;
+    }
+    
+    nstr output_path = nstr_concat(arena, build_dir_str, slash);
+    output_path = nstr_concat(arena, output_path, output_name_str);
+    if (output_path.data == NULL) {
+        fprintf(stderr, "Failed to build output path.\n");
+        goto cleanup;
     }
 
-    char command[COMMAND_MAX] = {0};
-    if (snprintf(command, sizeof(command), "%s -o %s", project->cc, output_path) >= (int)sizeof(command)) {
-        fprintf(stderr, "Compile command is too long.\n");
-        return 1;
+    // Start building compile command
+    nstr command = nstr_from(arena, project->cc);
+    command = nstr_append(arena, command, " -o");
+    command = nstr_append(arena, command, " ");
+    command = nstr_concat(arena, command, output_path);
+    if (command.data == NULL) {
+        fprintf(stderr, "Failed to build compile command.\n");
+        goto cleanup;
     }
 
+    // Add cflags
     if (project->cflags != NULL) {
         for (char **flag = project->cflags; *flag != NULL; flag++) {
-            if (append_token(command, sizeof(command), *flag) != 0) {
-                fprintf(stderr, "Compile command exceeded max length while adding cflags.\n");
-                return 1;
+            command = nstr_append(arena, command, " ");
+            command = nstr_append(arena, command, *flag);
+            if (command.data == NULL) {
+                fprintf(stderr, "Failed to append cflags to compile command.\n");
+                goto cleanup;
             }
         }
     }
 
+    // Add source files
     for (char **source = project->sources; *source != NULL; source++) {
-        if (append_token(command, sizeof(command), *source) != 0) {
-            fprintf(stderr, "Compile command exceeded max length while adding sources.\n");
-            return 1;
+        command = nstr_append(arena, command, " ");
+        command = nstr_append(arena, command, *source);
+        if (command.data == NULL) {
+            fprintf(stderr, "Failed to append sources to compile command.\n");
+            goto cleanup;
         }
     }
 
-    printf("Compiling sandbox with command:\n%s\n", command);
-    int status = system(command);
+    printf("Compiling sandbox with command:\n%s\n", nstr_cstr(command));
+    int status = system(nstr_cstr(command));
+
     if (status == -1) {
         perror("system failed");
-        return 1;
+        goto cleanup;
     }
 
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-        printf("Sandbox build succeeded: %s\n", output_path);
-        return 0;
+        printf("Sandbox build succeeded: %s\n", nstr_cstr(output_path));
+        result = 0;
+        goto cleanup;
     }
 
     fprintf(stderr, "Sandbox build failed with status: %d\n", status);
-    return 1;
+
+cleanup:
+    arena_destroy(arena);
+    return result;
 }

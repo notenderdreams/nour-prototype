@@ -3,15 +3,14 @@
 
 #include <stdio.h>
 #include "nour.h"
-#include <errno.h>
-#include <sys/stat.h>
 
-static inline void print_project(Project *project) {
-    printf("name: %s\n", project->name);
-    printf("version: %s\n", project->version);
-    printf("cc: %s\n", project->cc);
-    printf("build_dir: %s\n", project->build_dir);
-    printf("output_name: %s\n", project->output_name);
+static inline void print_project(const Project *project) {
+    if (!project) return;
+    printf("name: %s\n", project->name ? project->name : "(null)");
+    printf("version: %s\n", project->version ? project->version : "(null)");
+    printf("cc: %s\n", project->cc ? project->cc : "(null)");
+    printf("build_dir: %s\n", project->build_dir ? project->build_dir : "(null)");
+    printf("output_name: %s\n", project->output_name ? project->output_name : "(null)");
 
     if (project->cflags != NULL) {
         printf("cflags:\n");
@@ -24,19 +23,6 @@ static inline void print_project(Project *project) {
     for (char **source = project->sources; source != NULL && *source != NULL; source++) {
         printf("- %s\n", *source);
     }
-}
-
-static int ensure_directory(const char *path) {
-    if (mkdir(path, 0755) == 0) {
-        return 0;
-    }
-
-    if (errno == EEXIST) {
-        return 0;
-    }
-
-    perror("mkdir failed");
-    return -1;
 }
 
 #endif // UTILS_H

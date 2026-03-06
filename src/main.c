@@ -3,19 +3,18 @@
 #include "utils.h"
 #include "loader.h"
 
-const char* FILE_PATH = "./build/libnour.so";
+static const char* LIB_PATH = "./build/libnour.so";
 
-int main() {
-    Project *project_ptr = load_project(FILE_PATH);
-    if (!project_ptr) {
+int main(void) {
+    LoadedProject lp = load_project(LIB_PATH);
+    if (!lp.project) {
         return 1;
     }
 
-    print_project(project_ptr);
+    print_project(lp.project);
 
-    if (compile_project(project_ptr) != 0) {
-        return 1;
-    }
+    int rc = compile_project(lp.project);
+    unload_project(&lp);
 
-    return 0;
+    return rc != 0 ? 1 : 0;
 }
