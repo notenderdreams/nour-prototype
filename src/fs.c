@@ -204,6 +204,7 @@ void print_dep_graph(const DepGraph *graph) {
         return;
     }
     log_print(LOG_INFO, "Dependency graph:\n");
+
     for (size_t i = 0; i < graph->count; ++i) {
         int last_node = (i == graph->count - 1);
         print_leaf(graph->nodes[i].file, "", last_node);

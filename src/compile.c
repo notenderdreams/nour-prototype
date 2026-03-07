@@ -98,7 +98,7 @@ int compile_project(const Project *project) {
             goto cleanup;
         }
         for (size_t i = 0; i < files.count; i++) {
-            log_print(LOG_INFO, "  %s\n", files.files[i]);
+            log_print(LOG_INFO, "    %s\n", files.files[i]);
             if (all_sources_count < max_sources)
                 all_sources[all_sources_count++] = files.files[i];
         }
@@ -110,63 +110,82 @@ int compile_project(const Project *project) {
     print_dep_graph(&dep_graph);
 
     // --- Phase 1: Compile each source to .o in parallel via execvp ---
-    log_print(LOG_INFO, "Compiling %zu source files...\n", all_sources_count);
+    long max_jobs = sysconf(_SC_NPROCESSORS_ONLN);
+    if (max_jobs < 1) max_jobs = 1;
+    log_print(LOG_INFO, "Available parallel jobs : %ld\n", max_jobs);
+    log_print(LOG_INFO, "Compiling %zu source files\n", all_sources_count);
 
     size_t nflags = count_cflags(project->cflags);
     nstr *obj_paths = arena_alloc(arena, sizeof(nstr) * all_sources_count);
     pid_t *pids = arena_alloc(arena, sizeof(pid_t) * all_sources_count);
     if (!obj_paths || !pids) goto cleanup;
 
-    for (size_t i = 0; i < all_sources_count; i++) {
-        obj_paths[i] = obj_path_for(arena, project->build_dir, all_sources[i]);
-        if (obj_paths[i].data == NULL) {
-            log_print(LOG_ERROR, "Failed to build object path for: %s\n", all_sources[i]);
-            goto cleanup;
-        }
-
-        // Build argv: [cc, -c, -o, obj, ...cflags, source, NULL]
-        size_t argc = 4 + nflags + 1; // cc -c -o obj [cflags...] source
-        char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
-        if (!argv) goto cleanup;
-
-        size_t a = 0;
-        argv[a++] = project->cc;
-        argv[a++] = "-c";
-        argv[a++] = "-o";
-        argv[a++] = (char *)nstr_cstr(obj_paths[i]);
-        for (size_t f = 0; f < nflags; f++)
-            argv[a++] = project->cflags[f];
-        argv[a++] = all_sources[i];
-        argv[a] = NULL;
-
-        log_argv(LOG_INFO, argv);
-
-        pid_t pid = fork();
-        if (pid == -1) {
-            log_print(LOG_ERROR, "fork() failed for: %s\n", all_sources[i]);
-            goto cleanup;
-        }
-
-        if (pid == 0) {
-            execvp(argv[0], argv);
-            // Only reached on error
-            perror("execvp");
-            _exit(1);
-        }
-
-        pids[i] = pid;
-    }
-
-    // Wait for all compilations
+    size_t launched = 0;
+    size_t reaped = 0;
     int compile_failed = 0;
-    for (size_t i = 0; i < all_sources_count; i++) {
+
+    while (reaped < all_sources_count) {
+        // Launch up to max_jobs concurrent compilations
+        while (launched < all_sources_count && (long)(launched - reaped) < max_jobs) {
+            size_t i = launched;
+
+            obj_paths[i] = obj_path_for(arena, project->build_dir, all_sources[i]);
+            if (obj_paths[i].data == NULL) {
+                log_print(LOG_ERROR, "Failed to build object path for: %s\n", all_sources[i]);
+                goto cleanup;
+            }
+
+            // Build argv: [cc, -c, -o, obj, ...cflags, source, NULL]
+            size_t argc = 4 + nflags + 1;
+            char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
+            if (!argv) goto cleanup;
+
+            size_t a = 0;
+            argv[a++] = project->cc;
+            argv[a++] = "-c";
+            argv[a++] = "-o";
+            argv[a++] = (char *)nstr_cstr(obj_paths[i]);
+            for (size_t f = 0; f < nflags; f++)
+                argv[a++] = project->cflags[f];
+            argv[a++] = all_sources[i];
+            argv[a] = NULL;
+
+            log_argv(LOG_INFO, argv);
+
+            pid_t pid = fork();
+            if (pid == -1) {
+                log_print(LOG_ERROR, "fork() failed for: %s\n", all_sources[i]);
+                goto cleanup;
+            }
+
+            if (pid == 0) {
+                execvp(argv[0], argv);
+                perror("execvp");
+                _exit(1);
+            }
+
+            pids[i] = pid;
+            launched++;
+        }
+
+        // Wait for any child to finish
         int status;
-        waitpid(pids[i], &status, 0);
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-            log_print(LOG_ERROR, "Compilation failed: %s\n", all_sources[i]);
-            compile_failed = 1;
-        } else {
-            log_print(LOG_OK, "Compiled: %s\n", all_sources[i]);
+        pid_t done = waitpid(-1, &status, 0);
+        if (done == -1) break;
+
+        // Find which source this pid belongs to
+        for (size_t i = 0; i < launched; i++) {
+            if (pids[i] == done) {
+                if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                    log_print(LOG_ERROR, "Compilation failed: %s\n", all_sources[i]);
+                    compile_failed = 1;
+                } else {
+                    log_print(LOG_OK, "Compiled: %s\n", all_sources[i]);
+                }
+                pids[i] = 0; // mark as reaped
+                reaped++;
+                break;
+            }
         }
     }
 
