@@ -16,7 +16,6 @@ static nstr obj_path_for(Arena *arena, const char *build_dir, const char *source
     nstr result = nstr_from(arena, build_dir);
     result = nstr_append(arena, result, "/");
 
-    // Flatten the source path: replace '/' with '_'
     size_t len = strlen(source);
     char *flat = arena_alloc(arena, len + 1);
     if (!flat) return (nstr){0, NULL};
@@ -24,13 +23,32 @@ static nstr obj_path_for(Arena *arena, const char *build_dir, const char *source
         flat[i] = (source[i] == '/') ? '_' : source[i];
     flat[len] = '\0';
 
-    // Replace .c extension with .o
     if (len >= 2 && flat[len - 2] == '.' && flat[len - 1] == 'c') {
         flat[len - 1] = 'o';
     }
 
     result = nstr_append(arena, result, flat);
     return result;
+}
+
+// Count NULL-terminated cflags array
+static size_t count_cflags(char **cflags) {
+    size_t n = 0;
+    if (cflags) {
+        for (char **f = cflags; *f != NULL; f++) n++;
+    }
+    return n;
+}
+
+// Log an argv array as a single command line
+static void log_argv(LogLevel level, char **argv) {
+    // Print first arg
+    if (!argv || !argv[0]) return;
+    log_print(level, "%s", argv[0]);
+    for (size_t i = 1; argv[i] != NULL; i++) {
+        printf(" %s", argv[i]);
+    }
+    printf("\n");
 }
 
 int compile_project(const Project *project) {
@@ -91,9 +109,10 @@ int compile_project(const Project *project) {
     DepGraph dep_graph = build_dep_graph(arena, sources_list);
     print_dep_graph(&dep_graph);
 
-    // --- Phase 1: Compile each source to .o in parallel ---
+    // --- Phase 1: Compile each source to .o in parallel via execvp ---
     log_print(LOG_INFO, "Compiling %zu source files...\n", all_sources_count);
 
+    size_t nflags = count_cflags(project->cflags);
     nstr *obj_paths = arena_alloc(arena, sizeof(nstr) * all_sources_count);
     pid_t *pids = arena_alloc(arena, sizeof(pid_t) * all_sources_count);
     if (!obj_paths || !pids) goto cleanup;
@@ -105,24 +124,22 @@ int compile_project(const Project *project) {
             goto cleanup;
         }
 
-        // Build compile command: cc -c -o obj cflags source
-        nstr cmd = nstr_from(arena, project->cc);
-        cmd = nstr_append(arena, cmd, " -c -o ");
-        cmd = nstr_concat(arena, cmd, obj_paths[i]);
-        if (project->cflags != NULL) {
-            for (char **flag = project->cflags; *flag != NULL; flag++) {
-                cmd = nstr_append(arena, cmd, " ");
-                cmd = nstr_append(arena, cmd, *flag);
-            }
-        }
-        cmd = nstr_append(arena, cmd, " ");
-        cmd = nstr_append(arena, cmd, all_sources[i]);
-        if (cmd.data == NULL) {
-            log_print(LOG_ERROR, "Failed to build compile command for: %s\n", all_sources[i]);
-            goto cleanup;
-        }
+        // Build argv: [cc, -c, -o, obj, ...cflags, source, NULL]
+        size_t argc = 4 + nflags + 1; // cc -c -o obj [cflags...] source
+        char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
+        if (!argv) goto cleanup;
 
-        log_print(LOG_INFO, "  %s\n", nstr_cstr(cmd));
+        size_t a = 0;
+        argv[a++] = project->cc;
+        argv[a++] = "-c";
+        argv[a++] = "-o";
+        argv[a++] = (char *)nstr_cstr(obj_paths[i]);
+        for (size_t f = 0; f < nflags; f++)
+            argv[a++] = project->cflags[f];
+        argv[a++] = all_sources[i];
+        argv[a] = NULL;
+
+        log_argv(LOG_INFO, argv);
 
         pid_t pid = fork();
         if (pid == -1) {
@@ -131,8 +148,10 @@ int compile_project(const Project *project) {
         }
 
         if (pid == 0) {
-            // Child: exec the compile command
-            _exit(system(nstr_cstr(cmd)));
+            execvp(argv[0], argv);
+            // Only reached on error
+            perror("execvp");
+            _exit(1);
         }
 
         pids[i] = pid;
@@ -156,29 +175,37 @@ int compile_project(const Project *project) {
         goto cleanup;
     }
 
-    // --- Phase 2: Link all .o files ---
+    // --- Phase 2: Link all .o files via execvp ---
     {
-        nstr link_cmd = nstr_from(arena, project->cc);
-        link_cmd = nstr_append(arena, link_cmd, " -o ");
-        link_cmd = nstr_concat(arena, link_cmd, output_path);
+        // argv: [cc, -o, output, ...objs, NULL]
+        size_t argc = 3 + all_sources_count;
+        char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
+        if (!argv) goto cleanup;
 
-        for (size_t i = 0; i < all_sources_count; i++) {
-            link_cmd = nstr_append(arena, link_cmd, " ");
-            link_cmd = nstr_concat(arena, link_cmd, obj_paths[i]);
-        }
+        size_t a = 0;
+        argv[a++] = project->cc;
+        argv[a++] = "-o";
+        argv[a++] = (char *)nstr_cstr(output_path);
+        for (size_t i = 0; i < all_sources_count; i++)
+            argv[a++] = (char *)nstr_cstr(obj_paths[i]);
+        argv[a] = NULL;
 
-        if (link_cmd.data == NULL) {
-            log_print(LOG_ERROR, "Failed to build link command.\n");
+        log_argv(LOG_INFO, argv);
+
+        pid_t pid = fork();
+        if (pid == -1) {
+            log_print(LOG_ERROR, "fork() failed for linking.\n");
             goto cleanup;
         }
 
-        log_print(LOG_INFO, "Linking: %s\n", nstr_cstr(link_cmd));
-        int status = system(nstr_cstr(link_cmd));
-
-        if (status == -1) {
-            perror("system failed");
-            goto cleanup;
+        if (pid == 0) {
+            execvp(argv[0], argv);
+            perror("execvp");
+            _exit(1);
         }
+
+        int status;
+        waitpid(pid, &status, 0);
 
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
             log_print(LOG_OK, "Build succeeded: %s\n", nstr_cstr(output_path));
@@ -186,7 +213,7 @@ int compile_project(const Project *project) {
             goto cleanup;
         }
 
-        log_print(LOG_ERROR, "Linking failed with status: %d\n", status);
+        log_print(LOG_ERROR, "Linking failed with status: %d\n", WEXITSTATUS(status));
     }
 
 cleanup:
