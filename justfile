@@ -13,6 +13,11 @@ main: cso
 run: main
     ./build/sandbox_app
 
+# Run tests
+test:
+    gcc -Isrc -Itests -o build/test tests/*.c src/arena.c src/nstr.c src/fs.c src/log.c -Wall -Wextra
+    ./build/test
+
 # Clean build artifacts
 clean:
     rm -rf build
