@@ -74,7 +74,13 @@ int compile_project(const Project *project) {
         }
     }
 
-    // Expand glob patterns and add source files
+    // Expand glob patterns, collect all resolved source files
+    // Use a fixed-capacity list (arena-backed) — 256 files is a safe upper bound
+    size_t max_sources = 256;
+    char **all_sources = arena_alloc(arena, sizeof(char *) * max_sources);
+    size_t all_sources_count = 0;
+    if (!all_sources) goto cleanup;
+
     printf("Resolved source files:\n");
     for (char **source = project->sources; *source != NULL; source++) {
         FileList files = expand_glob(arena, *source);
@@ -85,11 +91,8 @@ int compile_project(const Project *project) {
         for (size_t i = 0; i < files.count; i++) {
             printf("  %s\n", files.files[i]);
 
-            // Show dependencies for each source file
-            FileList deps = get_dependent_files(arena, files.files[i]);
-            for (size_t j = 0; j < deps.count; j++) {
-                printf("    -> %s\n", deps.files[j]);
-            }
+            if (all_sources_count < max_sources)
+                all_sources[all_sources_count++] = files.files[i];
 
             command = nstr_append(arena, command, " ");
             command = nstr_append(arena, command, files.files[i]);
@@ -99,6 +102,11 @@ int compile_project(const Project *project) {
             }
         }
     }
+
+    // Build and print the reverse dependency graph
+    FileList sources_list = {all_sources, all_sources_count};
+    DepGraph dep_graph = build_dep_graph(arena, sources_list);
+    print_dep_graph(&dep_graph);
 
     printf("Compiling sandbox with command:\n%s\n", nstr_cstr(command));
     int status = system(nstr_cstr(command));

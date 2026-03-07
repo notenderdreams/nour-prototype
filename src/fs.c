@@ -131,3 +131,82 @@ FileList get_dependent_files(Arena *arena, const char *filepath){
     result.count = idx;
     return result;
 }
+
+DepGraph build_dep_graph(Arena *arena, FileList sources) {
+    DepGraph graph = {NULL, 0};
+    if (!arena || sources.count == 0 || !sources.files) return graph;
+
+    // Collect deps for every source file
+    FileList *all_deps = arena_alloc(arena, sizeof(FileList) * sources.count);
+    if (!all_deps) return graph;
+
+    size_t total_pairs = 0;
+    for (size_t i = 0; i < sources.count; i++) {
+        all_deps[i] = get_dependent_files(arena, sources.files[i]);
+        total_pairs += all_deps[i].count;
+    }
+
+    if (total_pairs == 0) return graph;
+
+    // Upper bound: at most total_pairs unique dep-file nodes
+    DepNode *nodes = arena_alloc(arena, sizeof(DepNode) * total_pairs);
+    if (!nodes) return graph;
+
+    size_t node_count = 0;
+
+    for (size_t i = 0; i < sources.count; i++) {
+        for (size_t j = 0; j < all_deps[i].count; j++) {
+            const char *dep = all_deps[i].files[j];
+
+            // Find existing node for this dep
+            DepNode *node = NULL;
+            for (size_t k = 0; k < node_count; k++) {
+                if (strcmp(nodes[k].file, dep) == 0) {
+                    node = &nodes[k];
+                    break;
+                }
+            }
+
+            if (!node) {
+                // New node — pre-allocate dependents for worst-case (all sources)
+                nodes[node_count].file = (char *)dep;
+                nodes[node_count].dependents = arena_alloc(arena, sizeof(char *) * sources.count);
+                nodes[node_count].count = 0;
+                if (!nodes[node_count].dependents) return graph;
+                node = &nodes[node_count++];
+            }
+
+            node->dependents[node->count++] = sources.files[i];
+        }
+    }
+
+    graph.nodes = nodes;
+    graph.count = node_count;
+    return graph;
+}
+
+void print_leaf(char *item, const char *padding, int last) {
+    printf("%s%s %s\n", padding, last ? "└──" : "├──", item);
+}
+
+void print_tree(char **items, size_t count, const char *padding) {
+    if (!items || count == 0) return;
+    for (size_t i = 0; i < count; i++) {
+        int last = (i == count - 1);
+        print_leaf(items[i], padding, last);
+    }
+}
+
+void print_dep_graph(const DepGraph *graph) {
+    if (!graph || graph->count == 0) {
+        printf("No dependencies found.\n");
+        return;
+    }
+    printf("Dependency graph:\n");
+    for (size_t i = 0; i < graph->count; ++i) {
+        int last_node = (i == graph->count - 1);
+        print_leaf(graph->nodes[i].file, "", last_node);
+        const char *padding = last_node ? "    " : "│   ";
+        print_tree(graph->nodes[i].dependents, graph->nodes[i].count, padding);
+    }
+}
