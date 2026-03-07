@@ -2,26 +2,14 @@
 #include "nstr.h"
 #include "arena.h"
 #include "utils.h"
+#include "fs.h"
 
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <sys/wait.h>
 
-static int ensure_directory(const char *path) {
-    if (mkdir(path, 0755) == 0) {
-        return 0;
-    }
 
-    if (errno == EEXIST) {
-        return 0;
-    }
-
-    perror("mkdir failed");
-    return -1;
-}
 
 int compile_project(const Project *project) {
     int result = 1;
@@ -86,13 +74,22 @@ int compile_project(const Project *project) {
         }
     }
 
-    // Add source files
+    // Expand glob patterns and add source files
+    printf("Resolved source files:\n");
     for (char **source = project->sources; *source != NULL; source++) {
-        command = nstr_append(arena, command, " ");
-        command = nstr_append(arena, command, *source);
-        if (command.data == NULL) {
-            fprintf(stderr, "Failed to append sources to compile command.\n");
+        FileList files = expand_glob(arena, *source);
+        if (files.count == 0) {
+            fprintf(stderr, "No files found for pattern: %s\n", *source);
             goto cleanup;
+        }
+        for (size_t i = 0; i < files.count; i++) {
+            printf("  %s\n", files.files[i]);
+            command = nstr_append(arena, command, " ");
+            command = nstr_append(arena, command, files.files[i]);
+            if (command.data == NULL) {
+                fprintf(stderr, "Failed to append sources to compile command.\n");
+                goto cleanup;
+            }
         }
     }
 
