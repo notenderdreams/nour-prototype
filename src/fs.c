@@ -1,4 +1,5 @@
 #include "fs.h"
+#include "log.h"
 
 #include <sys/stat.h>
 #include <errno.h>
@@ -29,9 +30,9 @@ FileList expand_glob(Arena *arena, const char *pattern) {
 
     if (ret != 0) {
         if (ret == GLOB_NOMATCH) {
-            fprintf(stderr, "No files matched pattern: %s\n", pattern);
+            log_print(LOG_WARN, "No files matched pattern: %s\n", pattern);
         } else {
-            fprintf(stderr, "glob() failed for pattern: %s\n", pattern);
+            log_print(LOG_ERROR, "glob() failed for pattern: %s\n", pattern);
         }
         globfree(&g);
         return result;
@@ -68,7 +69,7 @@ FileList get_dependent_files(Arena *arena, const char *filepath){
 
     FILE *f = fopen(filepath, "r");
     if (!f) {
-        fprintf(stderr, "Failed to open file: %s\n", filepath);
+        log_print(LOG_ERROR, "Failed to open file: %s\n", filepath);
         return result;
     }
 
@@ -199,10 +200,10 @@ void print_tree(char **items, size_t count, const char *padding) {
 
 void print_dep_graph(const DepGraph *graph) {
     if (!graph || graph->count == 0) {
-        printf("No dependencies found.\n");
+        log_print(LOG_INFO, "No dependencies found.\n");
         return;
     }
-    printf("Dependency graph:\n");
+    log_print(LOG_INFO, "Dependency graph:\n");
     for (size_t i = 0; i < graph->count; ++i) {
         int last_node = (i == graph->count - 1);
         print_leaf(graph->nodes[i].file, "", last_node);

@@ -3,6 +3,7 @@
 #include "arena.h"
 #include "utils.h"
 #include "fs.h"
+#include "log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,13 +11,12 @@
 #include <sys/wait.h>
 
 
-
 int compile_project(const Project *project) {
     int result = 1;
     Arena *arena = NULL;
 
     if (project == NULL || project->cc == NULL || project->build_dir == NULL || project->sources == NULL) {
-        fprintf(stderr, "Invalid project configuration.\n");
+        log_print(LOG_ERROR, "Invalid project configuration.\n");
         return 1;
     }
 
@@ -27,7 +27,7 @@ int compile_project(const Project *project) {
     // Create arena for string building (8KB initial)
     arena = arena_create(8192);
     if (!arena) {
-        fprintf(stderr, "Failed to create arena for string building.\n");
+        log_print(LOG_ERROR, "Failed to create arena for string building.\n");
         return 1;
     }
 
@@ -41,14 +41,14 @@ int compile_project(const Project *project) {
     nstr slash = nstr_from(arena, "/");
     nstr output_name_str = nstr_from(arena, output_name);
     if (build_dir_str.data == NULL || slash.data == NULL || output_name_str.data == NULL) {
-        fprintf(stderr, "Failed to allocate output path components.\n");
+        log_print(LOG_ERROR, "Failed to allocate output path components.\n");
         goto cleanup;
     }
     
     nstr output_path = nstr_concat(arena, build_dir_str, slash);
     output_path = nstr_concat(arena, output_path, output_name_str);
     if (output_path.data == NULL) {
-        fprintf(stderr, "Failed to build output path.\n");
+        log_print(LOG_ERROR, "Failed to build output path.\n");
         goto cleanup;
     }
 
@@ -58,7 +58,7 @@ int compile_project(const Project *project) {
     command = nstr_append(arena, command, " ");
     command = nstr_concat(arena, command, output_path);
     if (command.data == NULL) {
-        fprintf(stderr, "Failed to build compile command.\n");
+        log_print(LOG_ERROR, "Failed to build compile command.\n");
         goto cleanup;
     }
 
@@ -68,7 +68,7 @@ int compile_project(const Project *project) {
             command = nstr_append(arena, command, " ");
             command = nstr_append(arena, command, *flag);
             if (command.data == NULL) {
-                fprintf(stderr, "Failed to append cflags to compile command.\n");
+                log_print(LOG_ERROR, "Failed to append cflags to compile command.\n");
                 goto cleanup;
             }
         }
@@ -81,15 +81,15 @@ int compile_project(const Project *project) {
     size_t all_sources_count = 0;
     if (!all_sources) goto cleanup;
 
-    printf("Resolved source files:\n");
+    log_print(LOG_INFO, "Resolved source files:\n");
     for (char **source = project->sources; *source != NULL; source++) {
         FileList files = expand_glob(arena, *source);
         if (files.count == 0) {
-            fprintf(stderr, "No files found for pattern: %s\n", *source);
+            log_print(LOG_ERROR, "No files found for pattern: %s\n", *source);
             goto cleanup;
         }
         for (size_t i = 0; i < files.count; i++) {
-            printf("  %s\n", files.files[i]);
+            log_print(LOG_INFO, "  %s\n", files.files[i]);
 
             if (all_sources_count < max_sources)
                 all_sources[all_sources_count++] = files.files[i];
@@ -97,7 +97,7 @@ int compile_project(const Project *project) {
             command = nstr_append(arena, command, " ");
             command = nstr_append(arena, command, files.files[i]);
             if (command.data == NULL) {
-                fprintf(stderr, "Failed to append sources to compile command.\n");
+                log_print(LOG_ERROR, "Failed to append sources to compile command.\n");
                 goto cleanup;
             }
         }
@@ -108,7 +108,7 @@ int compile_project(const Project *project) {
     DepGraph dep_graph = build_dep_graph(arena, sources_list);
     print_dep_graph(&dep_graph);
 
-    printf("Compiling sandbox with command:\n%s\n", nstr_cstr(command));
+    log_print(LOG_INFO, "Compiling sandbox with command:\n%s\n", nstr_cstr(command));
     int status = system(nstr_cstr(command));
 
     if (status == -1) {
@@ -117,12 +117,12 @@ int compile_project(const Project *project) {
     }
 
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-        printf("Sandbox build succeeded: %s\n", nstr_cstr(output_path));
+        log_print(LOG_OK, "Sandbox build succeeded: %s\n", nstr_cstr(output_path));
         result = 0;
         goto cleanup;
     }
 
-    fprintf(stderr, "Sandbox build failed with status: %d\n", status);
+    log_print(LOG_ERROR, "Sandbox build failed with status: %d\n", status);
 
 cleanup:
     arena_destroy(arena);
