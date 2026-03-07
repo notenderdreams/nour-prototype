@@ -193,7 +193,7 @@ DepGraph build_dep_graph(Arena *arena, FileList sources) {
 }
 
 void print_leaf(char *item, const char *padding, int last) {
-    printf("%s%s %s\n", padding, last ? "└──" : "├──", item);
+    log_print(LOG_ALIGNED, "%s%s %s", padding, last ? "└──" : "├──", item);
 }
 
 void print_tree(char **items, size_t count, const char *padding) {

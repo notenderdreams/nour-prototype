@@ -42,13 +42,28 @@ static size_t count_cflags(char **cflags) {
 
 // Log an argv array as a single command line
 static void log_argv(LogLevel level, char **argv) {
-    // Print first arg
+    char buffer[4096];
+    size_t used = 0;
+
     if (!argv || !argv[0]) return;
-    log_print(level, "%s", argv[0]);
-    for (size_t i = 1; argv[i] != NULL; i++) {
-        printf(" %s", argv[i]);
+
+    for (size_t i = 0; argv[i] != NULL; i++) {
+        int written = snprintf(buffer + used,
+                               sizeof(buffer) - used,
+                               "%s%s",
+                               i == 0 ? "" : " ",
+                               argv[i]);
+        if (written < 0 || (size_t)written >= sizeof(buffer) - used) {
+            log_print(level, "%s", argv[0]);
+            for (size_t j = 1; argv[j] != NULL; j++) {
+                log_print(LOG_ALIGNED, "%s", argv[j]);
+            }
+            return;
+        }
+        used += (size_t)written;
     }
-    printf("\n");
+
+    log_print(level, "%s", buffer);
 }
 
 int compile_project(const Project *project) {

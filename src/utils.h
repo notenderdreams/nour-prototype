@@ -3,25 +3,26 @@
 
 #include <stdio.h>
 #include "nour.h"
+#include "log.h"
 
 static inline void print_project(const Project *project) {
     if (!project) return;
-    printf("name: %s\n", project->name ? project->name : "(null)");
-    printf("version: %s\n", project->version ? project->version : "(null)");
-    printf("cc: %s\n", project->cc ? project->cc : "(null)");
-    printf("build_dir: %s\n", project->build_dir ? project->build_dir : "(null)");
-    printf("output_name: %s\n", project->output_name ? project->output_name : "(null)");
+    log_print(LOG_ALIGNED, "name: %s", project->name ? project->name : "(null)");
+    log_print(LOG_ALIGNED, "version: %s", project->version ? project->version : "(null)");
+    log_print(LOG_ALIGNED, "cc: %s", project->cc ? project->cc : "(null)");
+    log_print(LOG_ALIGNED, "build_dir: %s", project->build_dir ? project->build_dir : "(null)");
+    log_print(LOG_ALIGNED, "output_name: %s", project->output_name ? project->output_name : "(null)");
 
     if (project->cflags != NULL) {
-        printf("cflags:\n");
+        log_print(LOG_ALIGNED, "cflags:");
         for (char **flag = project->cflags; *flag != NULL; flag++) {
-            printf("%s\n", *flag);
+            log_print(LOG_ALIGNED, "%s", *flag);
         }
     }
 
-    printf("sources:\n");
+    log_print(LOG_ALIGNED, "sources:");
     for (char **source = project->sources; source != NULL && *source != NULL; source++) {
-        printf("- %s\n", *source);
+        log_print(LOG_ALIGNED, "- %s", *source);
     }
 }
 

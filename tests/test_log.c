@@ -10,6 +10,21 @@ static void test_log_levels(void) {
     tests_passed++;
 }
 
+static void test_log_multiline(void) {
+    log_print(LOG_INFO, "line one\nline two\nline three");
+    tests_run++;
+    tests_passed++;
+}
+
+static void test_log_aligned(void) {
+    log_print(LOG_ALIGNED, "aligned line one");
+    log_print(LOG_ALIGNED, "aligned line two\naligned line three");
+    tests_run++;
+    tests_passed++;
+}
+
 void suite_log(void) {
     test_log_levels();
+    test_log_multiline();
+    test_log_aligned();
 }
