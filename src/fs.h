@@ -3,6 +3,7 @@
 
 #include "arena.h"
 #include <stddef.h>
+#include <time.h>
 
 typedef struct {
     char **files;
@@ -21,6 +22,7 @@ typedef struct {
 } DepGraph;
 
 int ensure_directory(const char *path);
+time_t get_mtime(const char *path);
 FileList expand_glob(Arena *arena, const char *pattern);
 FileList get_dependent_files(Arena *arena, const char *filepath);
 DepGraph build_dep_graph(Arena *arena, FileList sources);

@@ -109,93 +109,176 @@ int compile_project(const Project *project) {
     DepGraph dep_graph = build_dep_graph(arena, sources_list);
     print_dep_graph(&dep_graph);
 
-    // --- Phase 1: Compile each source to .o in parallel via execvp ---
-    long max_jobs = sysconf(_SC_NPROCESSORS_ONLN);
-    if (max_jobs < 1) max_jobs = 1;
-    log_print(LOG_INFO, "Available parallel jobs : %ld\n", max_jobs);
-    log_print(LOG_INFO, "Compiling %zu source files\n", all_sources_count);
-
+    // --- Determine which sources need recompilation ---
     size_t nflags = count_cflags(project->cflags);
     nstr *obj_paths = arena_alloc(arena, sizeof(nstr) * all_sources_count);
-    pid_t *pids = arena_alloc(arena, sizeof(pid_t) * all_sources_count);
-    if (!obj_paths || !pids) goto cleanup;
+    int *needs_build = arena_alloc(arena, sizeof(int) * all_sources_count);
+    if (!obj_paths || !needs_build) goto cleanup;
 
-    size_t launched = 0;
-    size_t reaped = 0;
-    int compile_failed = 0;
-
-    while (reaped < all_sources_count) {
-        // Launch up to max_jobs concurrent compilations
-        while (launched < all_sources_count && (long)(launched - reaped) < max_jobs) {
-            size_t i = launched;
-
-            obj_paths[i] = obj_path_for(arena, project->build_dir, all_sources[i]);
-            if (obj_paths[i].data == NULL) {
-                log_print(LOG_ERROR, "Failed to build object path for: %s\n", all_sources[i]);
-                goto cleanup;
-            }
-
-            // Build argv: [cc, -c, -o, obj, ...cflags, source, NULL]
-            size_t argc = 4 + nflags + 1;
-            char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
-            if (!argv) goto cleanup;
-
-            size_t a = 0;
-            argv[a++] = project->cc;
-            argv[a++] = "-c";
-            argv[a++] = "-o";
-            argv[a++] = (char *)nstr_cstr(obj_paths[i]);
-            for (size_t f = 0; f < nflags; f++)
-                argv[a++] = project->cflags[f];
-            argv[a++] = all_sources[i];
-            argv[a] = NULL;
-
-            log_argv(LOG_INFO, argv);
-
-            pid_t pid = fork();
-            if (pid == -1) {
-                log_print(LOG_ERROR, "fork() failed for: %s\n", all_sources[i]);
-                goto cleanup;
-            }
-
-            if (pid == 0) {
-                execvp(argv[0], argv);
-                perror("execvp");
-                _exit(1);
-            }
-
-            pids[i] = pid;
-            launched++;
+    for (size_t i = 0; i < all_sources_count; i++) {
+        obj_paths[i] = obj_path_for(arena, project->build_dir, all_sources[i]);
+        if (obj_paths[i].data == NULL) {
+            log_print(LOG_ERROR, "Failed to build object path for: %s\n", all_sources[i]);
+            goto cleanup;
         }
+        needs_build[i] = 0;
+    }
 
-        // Wait for any child to finish
-        int status;
-        pid_t done = waitpid(-1, &status, 0);
-        if (done == -1) break;
-
-        // Find which source this pid belongs to
-        for (size_t i = 0; i < launched; i++) {
-            if (pids[i] == done) {
-                if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                    log_print(LOG_ERROR, "Compilation failed: %s\n", all_sources[i]);
-                    compile_failed = 1;
-                } else {
-                    log_print(LOG_OK, "Compiled: %s\n", all_sources[i]);
-                }
-                pids[i] = 0; // mark as reaped
-                reaped++;
+    // Check each source: if source or any of its #include deps is newer than .o
+    for (size_t i = 0; i < all_sources_count; i++) {
+        time_t obj_mtime = get_mtime(nstr_cstr(obj_paths[i]));
+        if (obj_mtime == 0) {
+            needs_build[i] = 1; // .o doesn't exist
+            continue;
+        }
+        // Source itself changed?
+        if (get_mtime(all_sources[i]) > obj_mtime) {
+            needs_build[i] = 1;
+            continue;
+        }
+        // Any header dependency changed?
+        FileList deps = get_dependent_files(arena, all_sources[i]);
+        for (size_t d = 0; d < deps.count; d++) {
+            if (get_mtime(deps.files[d]) > obj_mtime) {
+                needs_build[i] = 1;
                 break;
             }
         }
     }
 
-    if (compile_failed) {
-        log_print(LOG_ERROR, "One or more files failed to compile.\n");
-        goto cleanup;
+    // Propagate: if a header changed, also mark all sources that depend on it
+    // (dep_graph maps header -> list of source files that include it)
+    for (size_t n = 0; n < dep_graph.count; n++) {
+        // Check if this header is newer than any of its dependents' .o files
+        time_t header_mtime = get_mtime(dep_graph.nodes[n].file);
+        if (header_mtime == 0) continue;
+        for (size_t d = 0; d < dep_graph.nodes[n].count; d++) {
+            // Find the index of this dependent source in all_sources
+            for (size_t i = 0; i < all_sources_count; i++) {
+                if (strcmp(all_sources[i], dep_graph.nodes[n].dependents[d]) == 0) {
+                    time_t obj_mt = get_mtime(nstr_cstr(obj_paths[i]));
+                    if (obj_mt == 0 || header_mtime > obj_mt) {
+                        needs_build[i] = 1;
+                    }
+                    break;
+                }
+            }
+        }
     }
 
-    // --- Phase 2: Link all .o files via execvp ---
+    // Count how many need rebuilding
+    size_t rebuild_count = 0;
+    for (size_t i = 0; i < all_sources_count; i++) {
+        if (needs_build[i]) rebuild_count++;
+    }
+
+    // --- Phase 1: Compile only stale sources in parallel via execvp ---
+    if (rebuild_count == 0) {
+        log_print(LOG_OK, "All object files up to date, nothing to compile.\n");
+    } else {
+        long max_jobs = sysconf(_SC_NPROCESSORS_ONLN);
+        if (max_jobs < 1) max_jobs = 1;
+        log_print(LOG_INFO, "Recompiling %zu/%zu files (%ld jobs)...\n", rebuild_count, all_sources_count, max_jobs);
+
+        pid_t *pids = arena_alloc(arena, sizeof(pid_t) * all_sources_count);
+        if (!pids) goto cleanup;
+        for (size_t i = 0; i < all_sources_count; i++) pids[i] = 0;
+
+        size_t next = 0;       // next source index to consider launching
+        size_t reaped = 0;
+        size_t in_flight = 0;
+        int compile_failed = 0;
+
+        while (reaped < rebuild_count) {
+            // Launch jobs up to max_jobs
+            while (next < all_sources_count && (long)in_flight < max_jobs) {
+                if (!needs_build[next]) { next++; continue; }
+                size_t i = next;
+
+                // Build argv: [cc, -c, -o, obj, ...cflags, source, NULL]
+                size_t argc = 4 + nflags + 1;
+                char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
+                if (!argv) goto cleanup;
+
+                size_t a = 0;
+                argv[a++] = project->cc;
+                argv[a++] = "-c";
+                argv[a++] = "-o";
+                argv[a++] = (char *)nstr_cstr(obj_paths[i]);
+                for (size_t f = 0; f < nflags; f++)
+                    argv[a++] = project->cflags[f];
+                argv[a++] = all_sources[i];
+                argv[a] = NULL;
+
+                log_argv(LOG_INFO, argv);
+
+                pid_t pid = fork();
+                if (pid == -1) {
+                    log_print(LOG_ERROR, "fork() failed for: %s\n", all_sources[i]);
+                    goto cleanup;
+                }
+
+                if (pid == 0) {
+                    execvp(argv[0], argv);
+                    perror("execvp");
+                    _exit(1);
+                }
+
+                pids[i] = pid;
+                in_flight++;
+                next++;
+            }
+
+            // Wait for any child to finish
+            int status;
+            pid_t done = waitpid(-1, &status, 0);
+            if (done == -1) break;
+
+            for (size_t i = 0; i < all_sources_count; i++) {
+                if (pids[i] == done) {
+                    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+                        log_print(LOG_ERROR, "Compilation failed: %s\n", all_sources[i]);
+                        compile_failed = 1;
+                    } else {
+                        log_print(LOG_OK, "Compiled: %s\n", all_sources[i]);
+                    }
+                    pids[i] = 0;
+                    in_flight--;
+                    reaped++;
+                    break;
+                }
+            }
+        }
+
+        if (compile_failed) {
+            log_print(LOG_ERROR, "One or more files failed to compile.\n");
+            goto cleanup;
+        }
+    }
+
+    // --- Phase 2: Link if needed ---
     {
+        // Check if we need to re-link: any recompilation happened, or binary missing/stale
+        int needs_link = (rebuild_count > 0);
+        if (!needs_link) {
+            time_t bin_mtime = get_mtime(nstr_cstr(output_path));
+            if (bin_mtime == 0) {
+                needs_link = 1;
+            } else {
+                for (size_t i = 0; i < all_sources_count; i++) {
+                    if (get_mtime(nstr_cstr(obj_paths[i])) > bin_mtime) {
+                        needs_link = 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!needs_link) {
+            log_print(LOG_OK, "Binary up to date: %s\n", nstr_cstr(output_path));
+            result = 0;
+            goto cleanup;
+        }
         // argv: [cc, -o, output, ...objs, NULL]
         size_t argc = 3 + all_sources_count;
         char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));

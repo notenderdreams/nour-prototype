@@ -20,6 +20,12 @@ int ensure_directory(const char *path) {
     return -1;
 }
 
+time_t get_mtime(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+    return st.st_mtime;
+}
+
 FileList expand_glob(Arena *arena, const char *pattern) {
     FileList result = {NULL, 0};
 
