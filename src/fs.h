@@ -11,5 +11,6 @@ typedef struct {
 
 int ensure_directory(const char *path);
 FileList expand_glob(Arena *arena, const char *pattern);
+FileList get_dependent_files(Arena *arena, const char *filepath);
 
 #endif // FS_H

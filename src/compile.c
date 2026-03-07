@@ -84,6 +84,13 @@ int compile_project(const Project *project) {
         }
         for (size_t i = 0; i < files.count; i++) {
             printf("  %s\n", files.files[i]);
+
+            // Show dependencies for each source file
+            FileList deps = get_dependent_files(arena, files.files[i]);
+            for (size_t j = 0; j < deps.count; j++) {
+                printf("    -> %s\n", deps.files[j]);
+            }
+
             command = nstr_append(arena, command, " ");
             command = nstr_append(arena, command, files.files[i]);
             if (command.data == NULL) {
