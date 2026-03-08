@@ -102,12 +102,14 @@ int compile_project(const Project *project, const char *name) {
     int result = 1;
     Arena *arena = NULL;
 
-    if (project == NULL || project->cc == NULL || project->build_dir == NULL || project->sources == NULL) {
+    if (project == NULL || project->cc == NULL || project->sources == NULL) {
         log_print(LOG_ERROR, "Invalid project configuration.\n");
         return 1;
     }
 
-    if (ensure_directory(project->build_dir) != 0) {
+    const char *build_dir = project->build_dir ? project->build_dir : "build";
+
+    if (ensure_directory(build_dir) != 0) {
         return 1;
     }
 
@@ -120,7 +122,7 @@ int compile_project(const Project *project, const char *name) {
     const char *output_name = name;
 
     // Build output path
-    nstr output_path = nstr_from(arena, project->build_dir);
+    nstr output_path = nstr_from(arena, build_dir);
     output_path = nstr_append(arena, output_path, "/");
     output_path = nstr_append(arena, output_path, output_name);
     if (output_path.data == NULL) {
@@ -162,7 +164,7 @@ int compile_project(const Project *project, const char *name) {
     if (!obj_paths || !needs_build) goto cleanup;
 
     for (size_t i = 0; i < all_sources_count; i++) {
-        obj_paths[i] = obj_path_for(arena, project->build_dir, all_sources[i]);
+        obj_paths[i] = obj_path_for(arena, build_dir, all_sources[i]);
         if (obj_paths[i].data == NULL) {
             log_print(LOG_ERROR, "Failed to build object path for: %s\n", all_sources[i]);
             goto cleanup;

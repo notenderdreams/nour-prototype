@@ -8,7 +8,6 @@ Project sandbox_app = {
         "sandbox/utils/*.c"
     },
     .cc = "gcc",
-    .build_dir = "build",
     .optimize = OPT_DEBUG,
     .warnings = WARN_ALL | WARN_EXTRA,
     .sanitizers = SAN_NONE,
