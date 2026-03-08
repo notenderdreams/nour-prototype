@@ -36,6 +36,7 @@ typedef struct {
     char       *version;
     char      **sources;
     char       *cc;
+    char       *linker;
     char       *build_dir;
     OptLevel    optimize;
     Warnings    warnings;

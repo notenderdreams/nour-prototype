@@ -342,8 +342,10 @@ int compile_project(const Project *project, const char *name) {
         size_t exp_count = 0;
         exp_count += sanitizers_to_flags(project->sanitizers, expanded_flags + exp_count, 32 - exp_count);
 
-        // argv: [cc, -o, output, ...expanded, ...objs, NULL]
-        size_t argc = 3 + exp_count + all_sources_count;
+        int has_linker = project->linker && project->linker[0];
+
+        // argv: [cc, -o, output, optional(-fuse-ld=...), ...expanded, ...objs, NULL]
+        size_t argc = 3 + (has_linker ? 1 : 0) + exp_count + all_sources_count;
         char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
         if (!argv) goto cleanup;
 
@@ -351,6 +353,11 @@ int compile_project(const Project *project, const char *name) {
         argv[a++] = (char *)cc;
         argv[a++] = "-o";
         argv[a++] = (char *)nstr_cstr(output_path);
+        if (has_linker) {
+            nstr fuse = nstr_from(arena, "-fuse-ld=");
+            fuse = nstr_append(arena, fuse, project->linker);
+            argv[a++] = (char *)nstr_cstr(fuse);
+        }
         for (size_t e = 0; e < exp_count; e++)
             argv[a++] = (char *)expanded_flags[e];
         for (size_t i = 0; i < all_sources_count; i++)

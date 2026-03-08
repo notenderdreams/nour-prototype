@@ -11,6 +11,8 @@ static inline void print_project(const Project *project, const char *name) {
               name ? name : "?",
               project->version ? project->version : "?",
               project->cc ? project->cc : "gcc");
+    if (project->linker && project->linker[0])
+        log_print(LOG_ALIGNED, "linker: %s", project->linker);
 
     if (project->cflags != NULL) {
         log_print(LOG_ALIGNED, "cflags:");
