@@ -47,6 +47,29 @@ static void count_braces(const char *line, int *depth) {
     }
 }
 
+// Detect ".field = {" where '{' is NOT preceded by ')' (no existing cast).
+// Returns pointer to the '{', or NULL if not a bare array assignment.
+static const char *match_bare_array(const char *line) {
+    const char *p = line;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p != '.') return NULL;
+    p++;
+    // identifier
+    if (!isalpha((unsigned char)*p) && *p != '_') return NULL;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+    // ' = '
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p != '=') return NULL;
+    p++;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p != '{') return NULL;
+    // make sure previous non-space before '{' wasn't ')' — i.e. not already cast
+    const char *look = p - 1;
+    while (look > line && isspace((unsigned char)*look)) look--;
+    if (*look == ')') return NULL;
+    return p; // points at '{'
+}
+
 int nour_preprocess(const char *input_path, const char *output_path,
                     NourDecl *decls, size_t *decl_count) {
     *decl_count = 0;
@@ -65,8 +88,10 @@ int nour_preprocess(const char *input_path, const char *output_path,
     }
 
     char line[1024];
-    int  depth    = 0;
-    int  in_decl  = 0;
+    int  depth       = 0;
+    int  in_decl     = 0;
+    int  in_array    = 0;  // rewriting a bare { } array field
+    int  array_depth = 0;
 
     while (fgets(line, sizeof(line), in)) {
         char type[NOUR_DECL_MAX_NAME], sym[NOUR_DECL_MAX_NAME];
@@ -80,11 +105,66 @@ int nour_preprocess(const char *input_path, const char *output_path,
                 decls[*decl_count].name[NOUR_DECL_MAX_NAME - 1] = '\0';
                 (*decl_count)++;
             }
-
-            // Already valid C — pass through as-is, just track depth for ';' injection
             fputs(line, out);
             depth   = 1;
             in_decl = 1;
+
+        } else if (in_decl && !in_array) {
+            const char *brace = match_bare_array(line);
+            if (brace) {
+                // Write ".field = (char*[]{" prefix
+                fwrite(line, 1, (size_t)(brace - line), out);
+                fputs("(char*[]){", out);
+
+                const char *rest = brace + 1;
+
+                // Count depth in the rest of this line to see if it closes here
+                int d = 1;
+                for (const char *p = rest; *p; p++) {
+                    if (*p == '{')      d++;
+                    else if (*p == '}') d--;
+                }
+
+                if (d == 0) {
+                    // Single-line: inject NULL before the closing '}'
+                    char *last = strrchr((char *)rest, '}');
+                    fwrite(rest, 1, (size_t)(last - rest), out);
+                    fputs(", NULL}", out);
+                    fputs(last + 1, out);
+                } else {
+                    // Multi-line: write rest as-is and enter array mode
+                    fputs(rest, out);
+                    in_array    = 1;
+                    array_depth = d;
+                }
+            } else {
+                count_braces(line, &depth);
+                if (in_decl && depth == 0)
+                    in_decl = 0;
+                fputs(line, out);
+            }
+
+        } else if (in_array) {
+            // Track depth change this line will cause
+            int delta = 0;
+            for (const char *p = line; *p; p++) {
+                if (*p == '{')      delta++;
+                else if (*p == '}') delta--;
+            }
+
+            if (array_depth + delta == 0) {
+                // This line closes the array — inject NULL before the last '}'
+                char *last_brace = strrchr(line, '}');
+                // trim trailing whitespace/comma before the brace to find insert point
+                fwrite(line, 1, (size_t)(last_brace - line), out);
+                fputs(", NULL\n}", out);
+                fputs(last_brace + 1, out);
+                array_depth = 0;
+                in_array    = 0;
+            } else {
+                array_depth += delta;
+                fputs(line, out);
+            }
 
         } else {
             count_braces(line, &depth);

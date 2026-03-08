@@ -2,9 +2,13 @@
 
 Project sandbox_app = {
     .version = "0.1.0",
-    .sources = (char*[]){"sandbox/*.c", NULL},
+    .sources = {
+        "sandbox/*.c",
+        "sandbox/math/*.c",
+        "sandbox/utils/*.c"
+    },
     .cc = "gcc",
     .build_dir = "build",
-    .cflags = (char*[]){ "-Wall", "-Wextra", NULL }
+    .cflags = { "-Wall", "-Wextra", "-Isandbox" }
 };
 
