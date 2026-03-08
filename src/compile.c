@@ -66,7 +66,7 @@ static void log_argv(LogLevel level, char **argv) {
     log_print(level, "%s", buffer);
 }
 
-int compile_project(const Project *project) {
+int compile_project(const Project *project, const char *name) {
     int result = 1;
     Arena *arena = NULL;
 
@@ -85,10 +85,7 @@ int compile_project(const Project *project) {
         return 1;
     }
 
-    const char *output_name = project->output_name != NULL ? project->output_name : project->name;
-    if (output_name == NULL) {
-        output_name = "sandbox_app";
-    }
+    const char *output_name = name;
 
     // Build output path
     nstr output_path = nstr_from(arena, project->build_dir);

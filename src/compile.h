@@ -3,6 +3,6 @@
 
 #include "nour.h"
 
-int compile_project(const Project *project);
+int compile_project(const Project *project, const char *name);
 
 #endif // COMPILE_H

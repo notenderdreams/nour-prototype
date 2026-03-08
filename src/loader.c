@@ -3,8 +3,8 @@
 #include <dlfcn.h>
 #include <stdio.h>
 
-LoadedProject load_project(const char *lib_path) {
-    LoadedProject lp = {NULL, NULL};
+LoadedProject load_project(const char *lib_path, const char *symbol_name) {
+    LoadedProject lp = {NULL, NULL, NULL};
 
     void *handle = dlopen(lib_path, RTLD_NOW);
     if (!handle) {
@@ -12,17 +12,18 @@ LoadedProject load_project(const char *lib_path) {
         return lp;
     }
 
-    dlerror(); 
-    Project *project_ptr = (Project *)dlsym(handle, "project");
+    dlerror();
+    Project *project_ptr = (Project *)dlsym(handle, symbol_name);
     char *error = dlerror();
     if (error != NULL) {
-        log_print(LOG_ERROR, "Failed to find symbol 'project': %s\n", error);
+        log_print(LOG_ERROR, "Failed to find symbol '%s': %s\n", symbol_name, error);
         dlclose(handle);
         return lp;
     }
 
     lp.project = project_ptr;
-    lp.handle = handle;
+    lp.handle  = handle;
+    lp.name    = symbol_name;
     return lp;
 }
 

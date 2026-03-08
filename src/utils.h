@@ -5,13 +5,13 @@
 #include "nour.h"
 #include "log.h"
 
-static inline void print_project(const Project *project) {
+static inline void print_project(const Project *project, const char *name) {
     if (!project) return;
-    log_print(LOG_ALIGNED, "name: %s", project->name ? project->name : "(null)");
+    log_print(LOG_INFO, "Project:");
+    log_print(LOG_ALIGNED, "name: %s", name ? name : "(null)");
     log_print(LOG_ALIGNED, "version: %s", project->version ? project->version : "(null)");
     log_print(LOG_ALIGNED, "cc: %s", project->cc ? project->cc : "(null)");
     log_print(LOG_ALIGNED, "build_dir: %s", project->build_dir ? project->build_dir : "(null)");
-    log_print(LOG_ALIGNED, "output_name: %s", project->output_name ? project->output_name : "(null)");
 
     if (project->cflags != NULL) {
         log_print(LOG_ALIGNED, "cflags:");
