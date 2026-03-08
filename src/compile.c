@@ -102,7 +102,6 @@ int compile_project(const Project *project, const char *name) {
     size_t all_sources_count = 0;
     if (!all_sources) goto cleanup;
 
-    log_print(LOG_INFO, "Resolved source files:\n");
     for (char **source = project->sources; *source != NULL; source++) {
         FileList files = expand_glob(arena, *source);
         if (files.count == 0) {
@@ -110,11 +109,14 @@ int compile_project(const Project *project, const char *name) {
             goto cleanup;
         }
         for (size_t i = 0; i < files.count; i++) {
-            log_print(LOG_INFO, "    %s\n", files.files[i]);
             if (all_sources_count < max_sources)
                 all_sources[all_sources_count++] = files.files[i];
         }
     }
+
+    log_print(LOG_INFO, "Source files(%zu):", all_sources_count);
+    for (size_t i = 0; i < all_sources_count; i++)
+        log_print(LOG_ALIGNED, "%s", all_sources[i]);
 
     // Build and print the reverse dependency graph
     FileList sources_list = {all_sources, all_sources_count};
