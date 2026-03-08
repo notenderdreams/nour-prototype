@@ -102,11 +102,12 @@ int compile_project(const Project *project, const char *name) {
     int result = 1;
     Arena *arena = NULL;
 
-    if (project == NULL || project->cc == NULL || project->sources == NULL) {
+    if (project == NULL || project->sources == NULL) {
         log_print(LOG_ERROR, "Invalid project configuration.\n");
         return 1;
     }
 
+    const char *cc = project->cc ? project->cc : "gcc";
     const char *build_dir = project->build_dir ? project->build_dir : "build";
 
     if (ensure_directory(build_dir) != 0) {
@@ -256,7 +257,7 @@ int compile_project(const Project *project, const char *name) {
                 if (!argv) goto cleanup;
 
                 size_t a = 0;
-                argv[a++] = project->cc;
+                argv[a++] = (char *)cc;
                 argv[a++] = "-c";
                 argv[a++] = "-o";
                 argv[a++] = (char *)nstr_cstr(obj_paths[i]);
@@ -347,7 +348,7 @@ int compile_project(const Project *project, const char *name) {
         if (!argv) goto cleanup;
 
         size_t a = 0;
-        argv[a++] = project->cc;
+        argv[a++] = (char *)cc;
         argv[a++] = "-o";
         argv[a++] = (char *)nstr_cstr(output_path);
         for (size_t e = 0; e < exp_count; e++)

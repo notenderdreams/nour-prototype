@@ -26,6 +26,13 @@ typedef enum {
 } Sanitizers;
 
 typedef struct {
+    OptLevel    optimize;
+    Warnings    warnings;
+    Sanitizers  sanitizers;
+    char      **cflags;
+} Profile;
+
+typedef struct {
     char       *version;
     char      **sources;
     char       *cc;

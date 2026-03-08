@@ -2,12 +2,15 @@
 
 Project sandbox_app = {
     .version = "0.1.0",
+    .cc = "gcc",
     .sources = {
         "sandbox/*.c",
         "sandbox/math/*.c",
         "sandbox/utils/*.c"
     },
-    .cc = "gcc",
+};
+
+Profile debug = {
     .optimize = OPT_DEBUG,
     .warnings = WARN_ALL | WARN_EXTRA,
     .sanitizers = SAN_NONE,

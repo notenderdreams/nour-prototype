@@ -10,7 +10,7 @@ static inline void print_project(const Project *project, const char *name) {
     log_print(LOG_INFO, "Project %s v%s (%s)",
               name ? name : "?",
               project->version ? project->version : "?",
-              project->cc ? project->cc : "?");
+              project->cc ? project->cc : "gcc");
 
     if (project->cflags != NULL) {
         log_print(LOG_ALIGNED, "cflags:");
