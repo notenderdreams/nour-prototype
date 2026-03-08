@@ -9,6 +9,9 @@ Project sandbox_app = {
     },
     .cc = "gcc",
     .build_dir = "build",
-    .cflags = { "-Wall", "-Wextra", "-Isandbox" }
+    .optimize = OPT_DEBUG,
+    .warnings = WARN_ALL | WARN_EXTRA,
+    .sanitizers = SAN_NONE,
+    .cflags = { "-Isandbox" }
 };
 

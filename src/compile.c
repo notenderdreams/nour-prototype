@@ -66,6 +66,38 @@ static void log_argv(LogLevel level, char **argv) {
     log_print(level, "%s", buffer);
 }
 
+// Expand OptLevel to flag string
+static const char *opt_to_flag(OptLevel opt) {
+    switch (opt) {
+        case OPT_NONE:       return "-O0";
+        case OPT_DEBUG:      return "-Og";
+        case OPT_RELEASE:    return "-O2";
+        case OPT_SIZE:       return "-Os";
+        case OPT_AGGRESSIVE: return "-O3";
+        default:             return "-O0";
+    }
+}
+
+// Expand Warnings bitmask to flag array. Returns count written.
+static size_t warnings_to_flags(Warnings w, const char **out, size_t max) {
+    size_t n = 0;
+    if (w & WARN_ALL      && n < max) out[n++] = "-Wall";
+    if (w & WARN_EXTRA    && n < max) out[n++] = "-Wextra";
+    if (w & WARN_ERROR    && n < max) out[n++] = "-Werror";
+    if (w & WARN_PEDANTIC && n < max) out[n++] = "-Wpedantic";
+    return n;
+}
+
+// Expand Sanitizers bitmask to flag array. Returns count written.
+static size_t sanitizers_to_flags(Sanitizers s, const char **out, size_t max) {
+    size_t n = 0;
+    if (s & SAN_ADDRESS && n < max) out[n++] = "-fsanitize=address";
+    if (s & SAN_UB      && n < max) out[n++] = "-fsanitize=undefined";
+    if (s & SAN_THREAD  && n < max) out[n++] = "-fsanitize=thread";
+    if (s & SAN_MEMORY  && n < max) out[n++] = "-fsanitize=memory";
+    return n;
+}
+
 int compile_project(const Project *project, const char *name) {
     int result = 1;
     Arena *arena = NULL;
@@ -209,8 +241,15 @@ int compile_project(const Project *project, const char *name) {
                 if (!needs_build[next]) { next++; continue; }
                 size_t i = next;
 
-                // Build argv: [cc, -c, -o, obj, ...cflags, source, NULL]
-                size_t argc = 4 + nflags + 1;
+                // Expand enum flags
+                const char *expanded_flags[32];
+                size_t exp_count = 0;
+                expanded_flags[exp_count++] = opt_to_flag(project->optimize);
+                exp_count += warnings_to_flags(project->warnings, expanded_flags + exp_count, 32 - exp_count);
+                exp_count += sanitizers_to_flags(project->sanitizers, expanded_flags + exp_count, 32 - exp_count);
+
+                // Build argv: [cc, -c, -o, obj, ...expanded, ...cflags, source, NULL]
+                size_t argc = 4 + exp_count + nflags + 1;
                 char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
                 if (!argv) goto cleanup;
 
@@ -219,6 +258,8 @@ int compile_project(const Project *project, const char *name) {
                 argv[a++] = "-c";
                 argv[a++] = "-o";
                 argv[a++] = (char *)nstr_cstr(obj_paths[i]);
+                for (size_t e = 0; e < exp_count; e++)
+                    argv[a++] = (char *)expanded_flags[e];
                 for (size_t f = 0; f < nflags; f++)
                     argv[a++] = project->cflags[f];
                 argv[a++] = all_sources[i];
@@ -293,8 +334,13 @@ int compile_project(const Project *project, const char *name) {
             result = 0;
             goto cleanup;
         }
-        // argv: [cc, -o, output, ...objs, NULL]
-        size_t argc = 3 + all_sources_count;
+        // Expand enum flags for linking
+        const char *expanded_flags[32];
+        size_t exp_count = 0;
+        exp_count += sanitizers_to_flags(project->sanitizers, expanded_flags + exp_count, 32 - exp_count);
+
+        // argv: [cc, -o, output, ...expanded, ...objs, NULL]
+        size_t argc = 3 + exp_count + all_sources_count;
         char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
         if (!argv) goto cleanup;
 
@@ -302,6 +348,8 @@ int compile_project(const Project *project, const char *name) {
         argv[a++] = project->cc;
         argv[a++] = "-o";
         argv[a++] = (char *)nstr_cstr(output_path);
+        for (size_t e = 0; e < exp_count; e++)
+            argv[a++] = (char *)expanded_flags[e];
         for (size_t i = 0; i < all_sources_count; i++)
             argv[a++] = (char *)nstr_cstr(obj_paths[i]);
         argv[a] = NULL;
