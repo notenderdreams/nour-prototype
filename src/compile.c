@@ -122,10 +122,25 @@ int compile_project(const Project *project, const char *name) {
 
     const char *output_name = name;
 
-    // Build output path
+    // Build output path (name depends on project type)
     nstr output_path = nstr_from(arena, build_dir);
     output_path = nstr_append(arena, output_path, "/");
-    output_path = nstr_append(arena, output_path, output_name);
+    switch (project->type) {
+        case STATIC_LIB:
+            output_path = nstr_append(arena, output_path, "lib");
+            output_path = nstr_append(arena, output_path, output_name);
+            output_path = nstr_append(arena, output_path, ".a");
+            break;
+        case DYNAMIC_LIB:
+            output_path = nstr_append(arena, output_path, "lib");
+            output_path = nstr_append(arena, output_path, output_name);
+            output_path = nstr_append(arena, output_path, ".so");
+            break;
+        case EXE:
+        default:
+            output_path = nstr_append(arena, output_path, output_name);
+            break;
+    }
     if (output_path.data == NULL) {
         log_print(LOG_ERROR, "Failed to build output path.\n");
         goto cleanup;
@@ -337,20 +352,66 @@ int compile_project(const Project *project, const char *name) {
             result = 0;
             goto cleanup;
         }
+
+        if (project->type == STATIC_LIB) {
+            // ar rcs <output.a> <objs...>
+            size_t argc = 2 + all_sources_count;
+            char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
+            if (!argv) goto cleanup;
+
+            size_t a = 0;
+            argv[a++] = "ar";
+            argv[a++] = "rcs";
+            argv[a++] = (char *)nstr_cstr(output_path);
+            for (size_t i = 0; i < all_sources_count; i++)
+                argv[a++] = (char *)nstr_cstr(obj_paths[i]);
+            argv[a] = NULL;
+
+            log_argv(LOG_INFO, argv);
+
+            pid_t pid = fork();
+            if (pid == -1) {
+                log_print(LOG_ERROR, "fork() failed for archiving.\n");
+                goto cleanup;
+            }
+            if (pid == 0) {
+                execvp(argv[0], argv);
+                perror("execvp");
+                _exit(1);
+            }
+
+            int status;
+            waitpid(pid, &status, 0);
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+                log_print(LOG_OK, "Build succeeded: %s\n", nstr_cstr(output_path));
+                result = 0;
+            } else {
+                log_print(LOG_ERROR, "Archiving failed with status: %d\n", WEXITSTATUS(status));
+            }
+            goto cleanup;
+        }
+
+        // TYPE_EXE or TYPE_DYNAMIC_LIB: link with cc
+        {
         // Expand enum flags for linking
         const char *expanded_flags[32];
         size_t exp_count = 0;
         exp_count += sanitizers_to_flags(project->sanitizers, expanded_flags + exp_count, 32 - exp_count);
 
         int has_linker = project->linker && project->linker[0];
+        int is_shared  = (project->type == DYNAMIC_LIB);
 
-        // argv: [cc, -o, output, optional(-fuse-ld=...), ...expanded, ...objs, NULL]
-        size_t argc = 3 + (has_linker ? 1 : 0) + exp_count + all_sources_count;
+        // argv: [cc, (-shared,) (-fPIC,) -o, output, (linker,) ...san, ...objs, NULL]
+        size_t argc = 3 + (is_shared ? 2 : 0) + (has_linker ? 1 : 0) + exp_count + all_sources_count;
         char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
         if (!argv) goto cleanup;
 
         size_t a = 0;
         argv[a++] = (char *)cc;
+        if (is_shared) {
+            argv[a++] = "-shared";
+            argv[a++] = "-fPIC";
+        }
         argv[a++] = "-o";
         argv[a++] = (char *)nstr_cstr(output_path);
         if (has_linker) {
@@ -388,6 +449,7 @@ int compile_project(const Project *project, const char *name) {
         }
 
         log_print(LOG_ERROR, "Linking failed with status: %d\n", WEXITSTATUS(status));
+        }
     }
 
 cleanup:

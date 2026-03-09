@@ -3,6 +3,7 @@
 Project sandbox_app = {
     .version = "0.1.0",
     .cc = "gcc",
+    .type = EXE,
     .sources = {
         "sandbox/*.c",
         "sandbox/math/*.c",

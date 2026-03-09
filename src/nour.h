@@ -2,6 +2,12 @@
 #define NOUR_H
 
 typedef enum {
+    EXE,         // executable (default)
+    STATIC_LIB,  // static library  (.a)
+    DYNAMIC_LIB  // shared library  (.so / .dylib)
+} ProjectType;
+
+typedef enum {
     OPT_NONE,       // -O0
     OPT_DEBUG,      // -Og
     OPT_RELEASE,    // -O2
@@ -38,6 +44,7 @@ typedef struct {
     char       *cc;
     char       *linker;
     char       *build_dir;
+    ProjectType type;
     OptLevel    optimize;
     Warnings    warnings;
     Sanitizers  sanitizers;
