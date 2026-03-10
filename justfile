@@ -5,7 +5,7 @@ main:
     ./build/main
 
 # Run the compiled sandbox app
-run: main
+run: configure main
     ./sandbox/build/sandbox_app
 
 # Run tests
@@ -16,6 +16,7 @@ test:
 # Clean build artifacts
 clean:
     rm -rf build
+    rm -rf sandbox/build
 
 # Clean & Run
 cr: clean run
@@ -27,17 +28,18 @@ configure:
     echo "Configuring pre-compiled libraries..."
     
     # Static library
-    mkdir -p sandbox/compiled_static/lib
-    gcc -c -Isandbox/compiled_static/include \
+    mkdir -p sandbox/src/compiled_static/lib
+    gcc -c -Isandbox/src/compiled_static/include \
         -o /tmp/example_cstatic.o \
-        sandbox/compiled_static/src/example_cstatic.c
-    ar rcs sandbox/compiled_static/lib/libexample_cstatic.a /tmp/example_cstatic.o
-    echo "✓ Static library: sandbox/compiled_static/lib/libexample_cstatic.a"
+        sandbox/src/compiled_static/src/example_cstatic.c
+    ar rcs sandbox/src/compiled_static/lib/libexample_cstatic.a /tmp/example_cstatic.o
+    echo "✓ Static library: sandbox/src/compiled_static/lib/libexample_cstatic.a"
     
     # Dynamic library
-    mkdir -p sandbox/compiled_dynamic/lib
-    gcc -shared -fPIC -Isandbox/compiled_dynamic/include \
-        -o sandbox/compiled_dynamic/lib/libexample_cdynamic.dylib \
-        sandbox/compiled_dynamic/src/example_cdynamic.c
-    echo "✓ Dynamic library: sandbox/compiled_dynamic/lib/libexample_cdynamic.dylib"
+    mkdir -p sandbox/src/compiled_dynamic/lib
+    gcc -shared -fPIC -Isandbox/src/compiled_dynamic/include \
+        -Wl,-install_name,@loader_path/../src/compiled_dynamic/lib/libexample_cdynamic.dylib \
+        -o sandbox/src/compiled_dynamic/lib/libexample_cdynamic.dylib \
+        sandbox/src/compiled_dynamic/src/example_cdynamic.c
+    echo "✓ Dynamic library: sandbox/src/compiled_dynamic/lib/libexample_cdynamic.dylib"
     echo "Configure complete!"

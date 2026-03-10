@@ -1,7 +1,7 @@
 #include "nour.h"
-#include "libs.nour"
-#include "compiled_static/package_static.nour"
-#include "compiled_dynamic/package_dynamic.nour"
+#include "src/libs.nour"
+#include "src/compiled_static/package_static.nour"
+#include "src/compiled_dynamic/package_dynamic.nour"
 
 //!lib.nour
 // Library math_utils = {
@@ -21,8 +21,8 @@
 
 Executable sandbox_app = {
     .sources = {
-        "*.c",
-        "utils/*.c",
+        "src/*.c",
+        "src/utils/*.c",
     },
     .includes = { "." },
     .deps = { &math_utils, &example_cstatic, &example_cdynamic },

@@ -338,6 +338,16 @@ static int compile_target(const Project *project, char **sources,
                         break;
                     }
                 }
+                // Also relink when any linked archive/shared package changed.
+                if (!needs_link) {
+                    for (size_t i = 0; i < lib_count; i++) {
+                        time_t lib_mtime = get_mtime(lib_paths[i]);
+                        if (lib_mtime == 0 || lib_mtime > bin_mtime) {
+                            needs_link = 1;
+                            break;
+                        }
+                    }
+                }
             }
         }
 
