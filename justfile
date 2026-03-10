@@ -16,3 +16,5 @@ test:
 # Clean build artifacts
 clean:
     rm -rf build
+
+cr: clean run
