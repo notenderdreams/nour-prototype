@@ -37,6 +37,9 @@ static inline void print_executable(const Executable *exe, const char *name) {
             } else if (dk == TARGET_EXECUTABLE) {
                 const Executable *dep = (const Executable *)(*d);
                 log_print(LOG_ALIGNED, "  %s (executable)", dep->name ? dep->name : "?");
+            } else if (dk == TARGET_PACKAGE) {
+                const Package *dep = (const Package *)(*d);
+                log_print(LOG_ALIGNED, "  %s (package)", dep->name ? dep->name : "?");
             }
         }
     }
@@ -64,8 +67,24 @@ static inline void print_library(const Library *lib, const char *name) {
             if (dk == TARGET_LIBRARY) {
                 const Library *dep = (const Library *)(*d);
                 log_print(LOG_ALIGNED, "  %s (library)", dep->name ? dep->name : "?");
+            } else if (dk == TARGET_PACKAGE) {
+                const Package *dep = (const Package *)(*d);
+                log_print(LOG_ALIGNED, "  %s (package)", dep->name ? dep->name : "?");
             }
         }
+    }
+}
+
+static inline void print_package(const Package *pkg, const char *name) {
+    if (!pkg) return;
+    const char *n = pkg->name ? pkg->name : (name ? name : "?");
+    log_print(LOG_INFO, "Package: %s", n);
+    if (pkg->lib)
+        log_print(LOG_ALIGNED, "lib: %s", pkg->lib);
+    if (pkg->includes) {
+        log_print(LOG_ALIGNED, "includes:");
+        for (char **s = pkg->includes; *s; s++)
+            log_print(LOG_ALIGNED, "  %s", *s);
     }
 }
 
@@ -75,6 +94,7 @@ static inline void print_target(const void *target, const char *name) {
     switch (kind) {
         case TARGET_EXECUTABLE: print_executable((const Executable *)target, name); break;
         case TARGET_LIBRARY:    print_library((const Library *)target, name);       break;
+        case TARGET_PACKAGE:    print_package((const Package *)target, name);       break;
     }
 }
 

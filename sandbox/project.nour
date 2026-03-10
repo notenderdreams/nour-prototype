@@ -16,13 +16,23 @@ Library math_utils_shared = {
     .includes = { "sandbox/math" },
 };
 
+Package example_cstatic = {
+    .lib = "sandbox/compiled_static/lib/libexample_cstatic.a",
+    .includes = { "sandbox/compiled_static/include" },
+};
+
+Package example_cdynamic = {
+    .lib = "sandbox/compiled_dynamic/lib/libexample_cdynamic.dylib",
+    .includes = { "sandbox/compiled_dynamic/include" },
+};
+
 Executable sandbox_app = {
     .sources = {
         "sandbox/*.c",
         "sandbox/utils/*.c",
     },
     .includes = { "sandbox" },
-    .deps = { &math_utils },
+    .deps = { &math_utils, &example_cstatic, &example_cdynamic },
 };
 
 Project project = {

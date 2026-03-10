@@ -9,6 +9,7 @@
 typedef enum {
     TARGET_EXECUTABLE,
     TARGET_LIBRARY,
+    TARGET_PACKAGE,
 } TargetKind;
 
 // ── Library flavour ─────────────────────────────────────────────────
@@ -71,6 +72,17 @@ typedef struct {
     void       **deps;      // NULL-terminated list of Library*
 } Library;
 
+// ── Pre-compiled package ────────────────────────────────────────────
+// A Package is an already-compiled library (.a / .so / .dylib).
+// No sources are needed; the extension determines static vs shared.
+
+typedef struct {
+    TargetKind   kind;      // TARGET_PACKAGE (set automatically)
+    char        *name;      // symbol name (set automatically)
+    char        *lib;       // path to .a / .so / .dylib
+    char       **includes;  // header search paths
+} Package;
+
 // ── Build profile ───────────────────────────────────────────────────
 
 typedef struct {
@@ -91,7 +103,7 @@ typedef struct {
     Warnings    warnings;
     Sanitizers  sanitizers;
     char      **cflags;
-    void      **targets;    // NULL-terminated array of Executable*/Library*
+    void      **targets;    // NULL-terminated array of Executable*/Library*/Package*
 
     // Legacy fields – kept so the old compile path still works.
     char      **sources;

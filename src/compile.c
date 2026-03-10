@@ -99,10 +99,12 @@ static size_t sanitizers_to_flags(Sanitizers s, const char **out, size_t max) {
 }
 
 // Compile + link a single target given its source list, output type, and name.
-// lib_paths/lib_count are extra archives/objects to pass to the linker (for executables).
+// lib_paths/lib_count are extra archives/objects to pass to the linker.
+// inc_paths/inc_count are extra -I include dirs for compilation.
 static int compile_target(const Project *project, char **sources,
                           ProjectType type, const char *name,
-                          const char **lib_paths, size_t lib_count) {
+                          const char **lib_paths, size_t lib_count,
+                          const char **inc_paths, size_t inc_count) {
     int result = 1;
     Arena *arena = NULL;
 
@@ -257,7 +259,7 @@ static int compile_target(const Project *project, char **sources,
                 exp_count += sanitizers_to_flags(project->sanitizers,
                                                  expanded_flags + exp_count, 32 - exp_count);
 
-                size_t argc = 4 + exp_count + nflags + 1;
+                size_t argc = 4 + exp_count + nflags + inc_count + 1;
                 char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
                 if (!argv) goto cleanup;
 
@@ -270,6 +272,11 @@ static int compile_target(const Project *project, char **sources,
                     argv[a++] = (char *)expanded_flags[e];
                 for (size_t f = 0; f < nflags; f++)
                     argv[a++] = project->cflags[f];
+                for (size_t ic = 0; ic < inc_count; ic++) {
+                    nstr iflag = nstr_from(arena, "-I");
+                    iflag = nstr_append(arena, iflag, inc_paths[ic]);
+                    argv[a++] = (char *)nstr_cstr(iflag);
+                }
                 argv[a++] = all_sources[i];
                 argv[a] = NULL;
 
@@ -475,24 +482,41 @@ static int ensure_lib_built(const Project *project, Library *lib,
 
     // Recursively build this library's own deps first
     const char *dep_paths[16];
+    const char *dep_incs[32];
     size_t dep_count = 0;
+    size_t inc_count = 0;
     if (lib->deps) {
         for (void **d = lib->deps; *d; d++) {
-            if (*(TargetKind *)(*d) != TARGET_LIBRARY) continue;
-            if (ensure_lib_built(project, (Library *)(*d), entries, count) != 0)
-                return 1;
-            for (size_t j = 0; j < *count; j++) {
-                if (entries[j].target == *d) {
-                    if (dep_count < 16)
-                        dep_paths[dep_count++] = entries[j].path;
-                    break;
+            TargetKind dk = *(TargetKind *)(*d);
+            if (dk == TARGET_LIBRARY) {
+                if (ensure_lib_built(project, (Library *)(*d), entries, count) != 0)
+                    return 1;
+                for (size_t j = 0; j < *count; j++) {
+                    if (entries[j].target == *d) {
+                        if (dep_count < 16)
+                            dep_paths[dep_count++] = entries[j].path;
+                        break;
+                    }
+                }
+                Library *dlib = (Library *)(*d);
+                if (dlib->includes) {
+                    for (char **s = dlib->includes; *s; s++)
+                        if (inc_count < 32) dep_incs[inc_count++] = *s;
+                }
+            } else if (dk == TARGET_PACKAGE) {
+                Package *pkg = (Package *)(*d);
+                if (pkg->lib && dep_count < 16)
+                    dep_paths[dep_count++] = pkg->lib;
+                if (pkg->includes) {
+                    for (char **s = pkg->includes; *s; s++)
+                        if (inc_count < 32) dep_incs[inc_count++] = *s;
                 }
             }
         }
     }
 
     int rc = compile_target(project, lib->sources, ptype, tgt_name,
-                            dep_paths, dep_count);
+                            dep_paths, dep_count, dep_incs, inc_count);
     if (rc != 0) return rc;
 
     if (*count < MAX_LIB_ENTRIES) {
@@ -540,25 +564,43 @@ int compile_project(const Project *project, const char *name) {
 
             // Ensure every declared dep is built, collect their link paths
             const char *dep_paths[16];
+            const char *dep_incs[32];
             size_t dep_count = 0;
+            size_t dep_inc_count = 0;
             if (exe->deps) {
                 for (void **d = exe->deps; *d; d++) {
-                    if (*(TargetKind *)(*d) != TARGET_LIBRARY) continue;
-                    if (ensure_lib_built(project, (Library *)(*d),
-                                         lib_entries, &lib_entry_count) != 0)
-                        return 1;
-                    for (size_t j = 0; j < lib_entry_count; j++) {
-                        if (lib_entries[j].target == *d) {
-                            if (dep_count < 16)
-                                dep_paths[dep_count++] = lib_entries[j].path;
-                            break;
+                    TargetKind dk = *(TargetKind *)(*d);
+                    if (dk == TARGET_LIBRARY) {
+                        if (ensure_lib_built(project, (Library *)(*d),
+                                             lib_entries, &lib_entry_count) != 0)
+                            return 1;
+                        for (size_t j = 0; j < lib_entry_count; j++) {
+                            if (lib_entries[j].target == *d) {
+                                if (dep_count < 16)
+                                    dep_paths[dep_count++] = lib_entries[j].path;
+                                break;
+                            }
+                        }
+                        Library *dlib = (Library *)(*d);
+                        if (dlib->includes) {
+                            for (char **s = dlib->includes; *s; s++)
+                                if (dep_inc_count < 32) dep_incs[dep_inc_count++] = *s;
+                        }
+                    } else if (dk == TARGET_PACKAGE) {
+                        Package *pkg = (Package *)(*d);
+                        if (pkg->lib && dep_count < 16)
+                            dep_paths[dep_count++] = pkg->lib;
+                        if (pkg->includes) {
+                            for (char **s = pkg->includes; *s; s++)
+                                if (dep_inc_count < 32) dep_incs[dep_inc_count++] = *s;
                         }
                     }
                 }
             }
 
             int rc = compile_target(project, exe->sources, EXE, tgt_name,
-                                    dep_paths, dep_count);
+                                    dep_paths, dep_count,
+                                    dep_incs, dep_inc_count);
             if (rc != 0) return rc;
         }
 
@@ -571,5 +613,5 @@ int compile_project(const Project *project, const char *name) {
         return 1;
     }
 
-    return compile_target(project, project->sources, project->type, name, NULL, 0);
+    return compile_target(project, project->sources, project->type, name, NULL, 0, NULL, 0);
 }

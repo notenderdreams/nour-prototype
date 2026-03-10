@@ -59,6 +59,8 @@ int main(void) {
     size_t exe_count = 0;
     const char *lib_symbols[16];
     size_t lib_count = 0;
+    const char *pkg_symbols[16];
+    size_t pkg_count = 0;
 
     for (size_t i = 0; i < decl_count; i++) {
         if (strcmp(decls[i].type, "Project") == 0) {
@@ -72,6 +74,9 @@ int main(void) {
         } else if (strcmp(decls[i].type, "Library") == 0) {
             if (lib_count < 16)
                 lib_symbols[lib_count++] = decls[i].name;
+        } else if (strcmp(decls[i].type, "Package") == 0) {
+            if (pkg_count < 16)
+                pkg_symbols[pkg_count++] = decls[i].name;
         }
     }
 
@@ -93,6 +98,12 @@ int main(void) {
         log_print(LOG_INFO, "Found %zu library declaration(s).", lib_count);
         for (size_t i = 0; i < lib_count; i++)
             log_print(LOG_ALIGNED, "%s", lib_symbols[i]);
+    }
+
+    if (pkg_count > 0) {
+        log_print(LOG_INFO, "Found %zu package declaration(s).", pkg_count);
+        for (size_t i = 0; i < pkg_count; i++)
+            log_print(LOG_ALIGNED, "%s", pkg_symbols[i]);
     }
 
     if (!symbol) {
@@ -125,6 +136,13 @@ int main(void) {
             if (lib) {
                 lib->kind = TARGET_LIBRARY;
                 lib->name = (char *)lib_symbols[i];
+            }
+        }
+        for (size_t i = 0; i < pkg_count; i++) {
+            Package *pkg = (Package *)dlsym(handle, pkg_symbols[i]);
+            if (pkg) {
+                pkg->kind = TARGET_PACKAGE;
+                pkg->name = (char *)pkg_symbols[i];
             }
         }
     }
