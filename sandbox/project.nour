@@ -29,7 +29,7 @@ Project project = {
     .version = "0.1.0",
     .cc = "gcc",
     .build_dir = "build",
-    .targets = { &math_utils, &math_utils_shared, &sandbox_app },
+    .targets = { &sandbox_app, &math_utils_shared },
 };
 
 Profile debug = {

@@ -442,6 +442,70 @@ cleanup:
     return result;
 }
 
+// ── Library build registry ──────────────────────────────────────────
+// Tracks which Library targets have been built and where their
+// artifacts live. ensure_lib_built() is idempotent: calling it for a
+// library that is already built is a no-op. This lets dep libs be
+// compiled automatically from an executable's .deps list even when
+// they are not listed in Project.targets.
+
+#define MAX_LIB_ENTRIES 32
+
+typedef struct {
+    void *target;
+    char  path[256];
+} LibEntry;
+
+static int ensure_lib_built(const Project *project, Library *lib,
+                             LibEntry *entries, size_t *count) {
+    // Already built?
+    for (size_t i = 0; i < *count; i++) {
+        if (entries[i].target == lib) return 0;
+    }
+
+    if (!lib->sources) {
+        log_print(LOG_ERROR, "Library '%s' has no sources.\n",
+                  lib->name ? lib->name : "?");
+        return 1;
+    }
+
+    const char *build_dir = project->build_dir ? project->build_dir : "build";
+    const char *tgt_name  = lib->name ? lib->name : "unnamed";
+    ProjectType ptype = (lib->type == SHARED) ? DYNAMIC_LIB : STATIC_LIB;
+
+    // Recursively build this library's own deps first
+    const char *dep_paths[16];
+    size_t dep_count = 0;
+    if (lib->deps) {
+        for (void **d = lib->deps; *d; d++) {
+            if (*(TargetKind *)(*d) != TARGET_LIBRARY) continue;
+            if (ensure_lib_built(project, (Library *)(*d), entries, count) != 0)
+                return 1;
+            for (size_t j = 0; j < *count; j++) {
+                if (entries[j].target == *d) {
+                    if (dep_count < 16)
+                        dep_paths[dep_count++] = entries[j].path;
+                    break;
+                }
+            }
+        }
+    }
+
+    int rc = compile_target(project, lib->sources, ptype, tgt_name,
+                            dep_paths, dep_count);
+    if (rc != 0) return rc;
+
+    if (*count < MAX_LIB_ENTRIES) {
+        entries[*count].target = lib;
+        if (ptype == STATIC_LIB)
+            snprintf(entries[*count].path, 256, "%s/lib%s.a",  build_dir, tgt_name);
+        else
+            snprintf(entries[*count].path, 256, "%s/lib%s.so", build_dir, tgt_name);
+        (*count)++;
+    }
+    return 0;
+}
+
 int compile_project(const Project *project, const char *name) {
     if (project == NULL) {
         log_print(LOG_ERROR, "Invalid project configuration.\n");
@@ -450,63 +514,22 @@ int compile_project(const Project *project, const char *name) {
 
     // New target-based path
     if (project->targets) {
-        const char *build_dir = project->build_dir ? project->build_dir : "build";
+        LibEntry lib_entries[MAX_LIB_ENTRIES];
+        size_t   lib_entry_count = 0;
 
-        // Mapping from target pointer → built output path
-        struct { void *target; char path[256]; } lib_entries[16];
-        size_t lib_entry_count = 0;
-
-        // Pass 1: build all Library targets
+        // Pass 1: build Library targets listed explicitly in project->targets
         for (void **t = project->targets; *t; t++) {
-            TargetKind kind = *(TargetKind *)(*t);
-            if (kind != TARGET_LIBRARY) continue;
-
-            Library *lib = (Library *)(*t);
-            if (!lib->sources) {
-                log_print(LOG_ERROR, "Library target has no sources.\n");
+            if (*(TargetKind *)(*t) != TARGET_LIBRARY) continue;
+            if (ensure_lib_built(project, (Library *)(*t),
+                                 lib_entries, &lib_entry_count) != 0)
                 return 1;
-            }
-            const char *tgt_name = lib->name ? lib->name : name;
-            ProjectType ptype = (lib->type == SHARED) ? DYNAMIC_LIB : STATIC_LIB;
-
-            // Resolve this library's own deps (e.g. shared lib linking another lib)
-            const char *dep_paths[16];
-            size_t dep_count = 0;
-            if (lib->deps) {
-                for (void **d = lib->deps; *d; d++) {
-                    if (*(TargetKind *)(*d) == TARGET_LIBRARY) {
-                        for (size_t j = 0; j < lib_entry_count; j++) {
-                            if (lib_entries[j].target == *d) {
-                                if (dep_count < 16)
-                                    dep_paths[dep_count++] = lib_entries[j].path;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            int rc = compile_target(project, lib->sources, ptype, tgt_name,
-                                    dep_paths, dep_count);
-            if (rc != 0) return rc;
-
-            // Record the output path for later dep resolution
-            if (lib_entry_count < 16) {
-                lib_entries[lib_entry_count].target = lib;
-                if (ptype == STATIC_LIB)
-                    snprintf(lib_entries[lib_entry_count].path, 256,
-                             "%s/lib%s.a", build_dir, tgt_name);
-                else
-                    snprintf(lib_entries[lib_entry_count].path, 256,
-                             "%s/lib%s.so", build_dir, tgt_name);
-                lib_entry_count++;
-            }
         }
 
-        // Pass 2: build all Executable targets, linking only declared deps
+        // Pass 2: build Executable targets.
+        // Any dep library not already built is compiled automatically here,
+        // so it does NOT need to appear in project->targets.
         for (void **t = project->targets; *t; t++) {
-            TargetKind kind = *(TargetKind *)(*t);
-            if (kind != TARGET_EXECUTABLE) continue;
+            if (*(TargetKind *)(*t) != TARGET_EXECUTABLE) continue;
 
             Executable *exe = (Executable *)(*t);
             if (!exe->sources) {
@@ -515,18 +538,20 @@ int compile_project(const Project *project, const char *name) {
             }
             const char *tgt_name = exe->name ? exe->name : name;
 
-            // Resolve deps to library output paths
+            // Ensure every declared dep is built, collect their link paths
             const char *dep_paths[16];
             size_t dep_count = 0;
             if (exe->deps) {
                 for (void **d = exe->deps; *d; d++) {
-                    if (*(TargetKind *)(*d) == TARGET_LIBRARY) {
-                        for (size_t j = 0; j < lib_entry_count; j++) {
-                            if (lib_entries[j].target == *d) {
-                                if (dep_count < 16)
-                                    dep_paths[dep_count++] = lib_entries[j].path;
-                                break;
-                            }
+                    if (*(TargetKind *)(*d) != TARGET_LIBRARY) continue;
+                    if (ensure_lib_built(project, (Library *)(*d),
+                                         lib_entries, &lib_entry_count) != 0)
+                        return 1;
+                    for (size_t j = 0; j < lib_entry_count; j++) {
+                        if (lib_entries[j].target == *d) {
+                            if (dep_count < 16)
+                                dep_paths[dep_count++] = lib_entries[j].path;
+                            break;
                         }
                     }
                 }
