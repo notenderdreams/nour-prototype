@@ -1,11 +1,32 @@
 #ifndef NOUR_H
 #define NOUR_H
 
+// ── Target discrimination ───────────────────────────────────────────
+// The first field of every target struct is `TargetKind kind;`.
+// Given a void* from the targets array you can always inspect
+// *(TargetKind*)ptr to decide which concrete struct it points to.
+
+typedef enum {
+    TARGET_EXECUTABLE,
+    TARGET_LIBRARY,
+} TargetKind;
+
+// ── Library flavour ─────────────────────────────────────────────────
+
+typedef enum {
+    STATIC,  // static library  (.a)
+    SHARED,  // shared library  (.so / .dylib)
+} LibraryType;
+
+// ── Legacy project-level type (kept for backward compat) ────────────
+
 typedef enum {
     EXE,         // executable (default)
     STATIC_LIB,  // static library  (.a)
     DYNAMIC_LIB  // shared library  (.so / .dylib)
 } ProjectType;
+
+// ── Compiler / build flags ──────────────────────────────────────────
 
 typedef enum {
     OPT_NONE,       // -O0
@@ -31,6 +52,27 @@ typedef enum {
     SAN_MEMORY  = 1 << 3   // -fsanitize=memory
 } Sanitizers;
 
+// ── Target structs ──────────────────────────────────────────────────
+
+typedef struct {
+    TargetKind   kind;      // TARGET_EXECUTABLE (set automatically)
+    char        *name;      // symbol name (set automatically)
+    char       **sources;
+    char       **includes;
+    // void **deps;         // TODO: dependency list (Executable*/Library*)
+} Executable;
+
+typedef struct {
+    TargetKind   kind;      // TARGET_LIBRARY (set automatically)
+    char        *name;      // symbol name (set automatically)
+    LibraryType  type;      // STATIC or SHARED
+    char       **sources;
+    char       **includes;
+    // void **deps;         // TODO: dependency list
+} Library;
+
+// ── Build profile ───────────────────────────────────────────────────
+
 typedef struct {
     OptLevel    optimize;
     Warnings    warnings;
@@ -38,17 +80,22 @@ typedef struct {
     char      **cflags;
 } Profile;
 
+// ── Project ─────────────────────────────────────────────────────────
+
 typedef struct {
     char       *version;
-    char      **sources;
     char       *cc;
     char       *linker;
     char       *build_dir;
-    ProjectType type;
     OptLevel    optimize;
     Warnings    warnings;
     Sanitizers  sanitizers;
     char      **cflags;
+    void      **targets;    // NULL-terminated array of Executable*/Library*
+
+    // Legacy fields – kept so the old compile path still works.
+    char      **sources;
+    ProjectType type;
 } Project;
 
 

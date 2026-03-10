@@ -98,21 +98,19 @@ static size_t sanitizers_to_flags(Sanitizers s, const char **out, size_t max) {
     return n;
 }
 
-int compile_project(const Project *project, const char *name) {
+// Compile + link a single target given its source list, output type, and name.
+// lib_paths/lib_count are extra archives/objects to pass to the linker (for executables).
+static int compile_target(const Project *project, char **sources,
+                          ProjectType type, const char *name,
+                          const char **lib_paths, size_t lib_count) {
     int result = 1;
     Arena *arena = NULL;
-
-    if (project == NULL || project->sources == NULL) {
-        log_print(LOG_ERROR, "Invalid project configuration.\n");
-        return 1;
-    }
 
     const char *cc = project->cc ? project->cc : "gcc";
     const char *build_dir = project->build_dir ? project->build_dir : "build";
 
-    if (ensure_directory(build_dir) != 0) {
+    if (ensure_directory(build_dir) != 0)
         return 1;
-    }
 
     arena = arena_create(8192);
     if (!arena) {
@@ -122,10 +120,10 @@ int compile_project(const Project *project, const char *name) {
 
     const char *output_name = name;
 
-    // Build output path (name depends on project type)
+    // Build output path (name depends on target type)
     nstr output_path = nstr_from(arena, build_dir);
     output_path = nstr_append(arena, output_path, "/");
-    switch (project->type) {
+    switch (type) {
         case STATIC_LIB:
             output_path = nstr_append(arena, output_path, "lib");
             output_path = nstr_append(arena, output_path, output_name);
@@ -152,7 +150,7 @@ int compile_project(const Project *project, const char *name) {
     size_t all_sources_count = 0;
     if (!all_sources) goto cleanup;
 
-    for (char **source = project->sources; *source != NULL; source++) {
+    for (char **source = sources; *source != NULL; source++) {
         FileList files = expand_glob(arena, *source);
         if (files.count == 0) {
             log_print(LOG_ERROR, "No files found for pattern: %s\n", *source);
@@ -192,15 +190,13 @@ int compile_project(const Project *project, const char *name) {
     for (size_t i = 0; i < all_sources_count; i++) {
         time_t obj_mtime = get_mtime(nstr_cstr(obj_paths[i]));
         if (obj_mtime == 0) {
-            needs_build[i] = 1; // .o doesn't exist
+            needs_build[i] = 1;
             continue;
         }
-        // Source itself changed?
         if (get_mtime(all_sources[i]) > obj_mtime) {
             needs_build[i] = 1;
             continue;
         }
-        // Any header dependency changed?
         FileList deps = get_dependent_files(arena, all_sources[i]);
         for (size_t d = 0; d < deps.count; d++) {
             if (get_mtime(deps.files[d]) > obj_mtime) {
@@ -211,19 +207,15 @@ int compile_project(const Project *project, const char *name) {
     }
 
     // Propagate: if a header changed, also mark all sources that depend on it
-    // (dep_graph maps header -> list of source files that include it)
     for (size_t n = 0; n < dep_graph.count; n++) {
-        // Check if this header is newer than any of its dependents' .o files
         time_t header_mtime = get_mtime(dep_graph.nodes[n].file);
         if (header_mtime == 0) continue;
         for (size_t d = 0; d < dep_graph.nodes[n].count; d++) {
-            // Find the index of this dependent source in all_sources
             for (size_t i = 0; i < all_sources_count; i++) {
                 if (strcmp(all_sources[i], dep_graph.nodes[n].dependents[d]) == 0) {
                     time_t obj_mt = get_mtime(nstr_cstr(obj_paths[i]));
-                    if (obj_mt == 0 || header_mtime > obj_mt) {
+                    if (obj_mt == 0 || header_mtime > obj_mt)
                         needs_build[i] = 1;
-                    }
                     break;
                 }
             }
@@ -236,37 +228,35 @@ int compile_project(const Project *project, const char *name) {
         if (needs_build[i]) rebuild_count++;
     }
 
-    // --- Phase 1: Compile only stale sources in parallel via execvp ---
+    // --- Phase 1: Compile only stale sources in parallel ---
     if (rebuild_count == 0) {
         log_print(LOG_OK, "All object files up to date, nothing to compile.\n");
     } else {
         long max_jobs = sysconf(_SC_NPROCESSORS_ONLN);
         if (max_jobs < 1) max_jobs = 1;
-        log_print(LOG_INFO, "Recompiling %zu/%zu files (%ld jobs)...\n", rebuild_count, all_sources_count, max_jobs);
+        log_print(LOG_INFO, "Recompiling %zu/%zu files (%ld jobs)...\n",
+                  rebuild_count, all_sources_count, max_jobs);
 
         pid_t *pids = arena_alloc(arena, sizeof(pid_t) * all_sources_count);
         if (!pids) goto cleanup;
         for (size_t i = 0; i < all_sources_count; i++) pids[i] = 0;
 
-        size_t next = 0;       // next source index to consider launching
-        size_t reaped = 0;
-        size_t in_flight = 0;
+        size_t next = 0, reaped = 0, in_flight = 0;
         int compile_failed = 0;
 
         while (reaped < rebuild_count) {
-            // Launch jobs up to max_jobs
             while (next < all_sources_count && (long)in_flight < max_jobs) {
                 if (!needs_build[next]) { next++; continue; }
                 size_t i = next;
 
-                // Expand enum flags
                 const char *expanded_flags[32];
                 size_t exp_count = 0;
                 expanded_flags[exp_count++] = opt_to_flag(project->optimize);
-                exp_count += warnings_to_flags(project->warnings, expanded_flags + exp_count, 32 - exp_count);
-                exp_count += sanitizers_to_flags(project->sanitizers, expanded_flags + exp_count, 32 - exp_count);
+                exp_count += warnings_to_flags(project->warnings,
+                                               expanded_flags + exp_count, 32 - exp_count);
+                exp_count += sanitizers_to_flags(project->sanitizers,
+                                                 expanded_flags + exp_count, 32 - exp_count);
 
-                // Build argv: [cc, -c, -o, obj, ...expanded, ...cflags, source, NULL]
                 size_t argc = 4 + exp_count + nflags + 1;
                 char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
                 if (!argv) goto cleanup;
@@ -290,7 +280,6 @@ int compile_project(const Project *project, const char *name) {
                     log_print(LOG_ERROR, "fork() failed for: %s\n", all_sources[i]);
                     goto cleanup;
                 }
-
                 if (pid == 0) {
                     execvp(argv[0], argv);
                     perror("execvp");
@@ -302,7 +291,6 @@ int compile_project(const Project *project, const char *name) {
                 next++;
             }
 
-            // Wait for any child to finish
             int status;
             pid_t done = waitpid(-1, &status, 0);
             if (done == -1) break;
@@ -331,7 +319,6 @@ int compile_project(const Project *project, const char *name) {
 
     // --- Phase 2: Link if needed ---
     {
-        // Check if we need to re-link: any recompilation happened, or binary missing/stale
         int needs_link = (rebuild_count > 0);
         if (!needs_link) {
             time_t bin_mtime = get_mtime(nstr_cstr(output_path));
@@ -353,8 +340,7 @@ int compile_project(const Project *project, const char *name) {
             goto cleanup;
         }
 
-        if (project->type == STATIC_LIB) {
-            // ar rcs <output.a> <objs...>
+        if (type == STATIC_LIB) {
             size_t argc = 2 + all_sources_count;
             char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
             if (!argv) goto cleanup;
@@ -391,68 +377,140 @@ int compile_project(const Project *project, const char *name) {
             goto cleanup;
         }
 
-        // TYPE_EXE or TYPE_DYNAMIC_LIB: link with cc
+        // EXE or DYNAMIC_LIB: link with cc
         {
-        // Expand enum flags for linking
-        const char *expanded_flags[32];
-        size_t exp_count = 0;
-        exp_count += sanitizers_to_flags(project->sanitizers, expanded_flags + exp_count, 32 - exp_count);
+            const char *expanded_flags[32];
+            size_t exp_count = 0;
+            exp_count += sanitizers_to_flags(project->sanitizers,
+                                             expanded_flags + exp_count, 32 - exp_count);
 
-        int has_linker = project->linker && project->linker[0];
-        int is_shared  = (project->type == DYNAMIC_LIB);
+            int has_linker = project->linker && project->linker[0];
+            int is_shared  = (type == DYNAMIC_LIB);
 
-        // argv: [cc, (-shared,) (-fPIC,) -o, output, (linker,) ...san, ...objs, NULL]
-        size_t argc = 3 + (is_shared ? 2 : 0) + (has_linker ? 1 : 0) + exp_count + all_sources_count;
-        char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
-        if (!argv) goto cleanup;
+            size_t argc = 3 + (is_shared ? 2 : 0) + (has_linker ? 1 : 0)
+                         + exp_count + all_sources_count + lib_count;
+            char **argv = arena_alloc(arena, sizeof(char *) * (argc + 1));
+            if (!argv) goto cleanup;
 
-        size_t a = 0;
-        argv[a++] = (char *)cc;
-        if (is_shared) {
-            argv[a++] = "-shared";
-            argv[a++] = "-fPIC";
-        }
-        argv[a++] = "-o";
-        argv[a++] = (char *)nstr_cstr(output_path);
-        if (has_linker) {
-            nstr fuse = nstr_from(arena, "-fuse-ld=");
-            fuse = nstr_append(arena, fuse, project->linker);
-            argv[a++] = (char *)nstr_cstr(fuse);
-        }
-        for (size_t e = 0; e < exp_count; e++)
-            argv[a++] = (char *)expanded_flags[e];
-        for (size_t i = 0; i < all_sources_count; i++)
-            argv[a++] = (char *)nstr_cstr(obj_paths[i]);
-        argv[a] = NULL;
+            size_t a = 0;
+            argv[a++] = (char *)cc;
+            if (is_shared) {
+                argv[a++] = "-shared";
+                argv[a++] = "-fPIC";
+            }
+            argv[a++] = "-o";
+            argv[a++] = (char *)nstr_cstr(output_path);
+            if (has_linker) {
+                nstr fuse = nstr_from(arena, "-fuse-ld=");
+                fuse = nstr_append(arena, fuse, project->linker);
+                argv[a++] = (char *)nstr_cstr(fuse);
+            }
+            for (size_t e = 0; e < exp_count; e++)
+                argv[a++] = (char *)expanded_flags[e];
+            for (size_t i = 0; i < all_sources_count; i++)
+                argv[a++] = (char *)nstr_cstr(obj_paths[i]);
+            for (size_t i = 0; i < lib_count; i++)
+                argv[a++] = (char *)lib_paths[i];
+            argv[a] = NULL;
 
-        log_argv(LOG_INFO, argv);
+            log_argv(LOG_INFO, argv);
 
-        pid_t pid = fork();
-        if (pid == -1) {
-            log_print(LOG_ERROR, "fork() failed for linking.\n");
-            goto cleanup;
-        }
+            pid_t pid = fork();
+            if (pid == -1) {
+                log_print(LOG_ERROR, "fork() failed for linking.\n");
+                goto cleanup;
+            }
+            if (pid == 0) {
+                execvp(argv[0], argv);
+                perror("execvp");
+                _exit(1);
+            }
 
-        if (pid == 0) {
-            execvp(argv[0], argv);
-            perror("execvp");
-            _exit(1);
-        }
-
-        int status;
-        waitpid(pid, &status, 0);
-
-        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-            log_print(LOG_OK, "Build succeeded: %s\n", nstr_cstr(output_path));
-            result = 0;
-            goto cleanup;
-        }
-
-        log_print(LOG_ERROR, "Linking failed with status: %d\n", WEXITSTATUS(status));
+            int status;
+            waitpid(pid, &status, 0);
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+                log_print(LOG_OK, "Build succeeded: %s\n", nstr_cstr(output_path));
+                result = 0;
+                goto cleanup;
+            }
+            log_print(LOG_ERROR, "Linking failed with status: %d\n", WEXITSTATUS(status));
         }
     }
 
 cleanup:
     arena_destroy(arena);
     return result;
+}
+
+int compile_project(const Project *project, const char *name) {
+    if (project == NULL) {
+        log_print(LOG_ERROR, "Invalid project configuration.\n");
+        return 1;
+    }
+
+    // New target-based path
+    if (project->targets) {
+        const char *build_dir = project->build_dir ? project->build_dir : "build";
+
+        // Collect library output paths (build libraries first)
+        const char *lib_outputs[16];
+        size_t lib_output_count = 0;
+
+        // Pass 1: build all Library targets
+        for (void **t = project->targets; *t; t++) {
+            TargetKind kind = *(TargetKind *)(*t);
+            if (kind != TARGET_LIBRARY) continue;
+
+            Library *lib = (Library *)(*t);
+            if (!lib->sources) {
+                log_print(LOG_ERROR, "Library target has no sources.\n");
+                return 1;
+            }
+            const char *tgt_name = lib->name ? lib->name : name;
+            ProjectType ptype = (lib->type == SHARED) ? DYNAMIC_LIB : STATIC_LIB;
+
+            int rc = compile_target(project, lib->sources, ptype, tgt_name, NULL, 0);
+            if (rc != 0) return rc;
+
+            // Record the output path so executables can link against it
+            if (lib_output_count < 16) {
+                static char lib_path_buf[16][256];
+                if (ptype == STATIC_LIB)
+                    snprintf(lib_path_buf[lib_output_count], 256,
+                             "%s/lib%s.a", build_dir, tgt_name);
+                else
+                    snprintf(lib_path_buf[lib_output_count], 256,
+                             "%s/lib%s.so", build_dir, tgt_name);
+                lib_outputs[lib_output_count] = lib_path_buf[lib_output_count];
+                lib_output_count++;
+            }
+        }
+
+        // Pass 2: build all Executable targets, linking against library outputs
+        for (void **t = project->targets; *t; t++) {
+            TargetKind kind = *(TargetKind *)(*t);
+            if (kind != TARGET_EXECUTABLE) continue;
+
+            Executable *exe = (Executable *)(*t);
+            if (!exe->sources) {
+                log_print(LOG_ERROR, "Executable target has no sources.\n");
+                return 1;
+            }
+            const char *tgt_name = exe->name ? exe->name : name;
+
+            int rc = compile_target(project, exe->sources, EXE, tgt_name,
+                                    lib_outputs, lib_output_count);
+            if (rc != 0) return rc;
+        }
+
+        return 0;
+    }
+
+    // Legacy path: use project->sources directly
+    if (project->sources == NULL) {
+        log_print(LOG_ERROR, "Invalid project configuration.\n");
+        return 1;
+    }
+
+    return compile_target(project, project->sources, project->type, name, NULL, 0);
 }

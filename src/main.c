@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <dlfcn.h>
 
 static const char *NOUR_FILE   = "sandbox/project.nour";
 static const char *NOUR_C_FILE = "build/project.nour.c";
@@ -54,13 +55,23 @@ int main(void) {
     const char *symbol = NULL;
     const char *profile_symbols[16];
     size_t profile_count = 0;
+    const char *exe_symbols[16];
+    size_t exe_count = 0;
+    const char *lib_symbols[16];
+    size_t lib_count = 0;
+
     for (size_t i = 0; i < decl_count; i++) {
         if (strcmp(decls[i].type, "Project") == 0) {
             symbol = decls[i].name;
         } else if (strcmp(decls[i].type, "Profile") == 0) {
-            if (profile_count < 16) {
+            if (profile_count < 16)
                 profile_symbols[profile_count++] = decls[i].name;
-            }
+        } else if (strcmp(decls[i].type, "Executable") == 0) {
+            if (exe_count < 16)
+                exe_symbols[exe_count++] = decls[i].name;
+        } else if (strcmp(decls[i].type, "Library") == 0) {
+            if (lib_count < 16)
+                lib_symbols[lib_count++] = decls[i].name;
         }
     }
 
@@ -70,6 +81,18 @@ int main(void) {
         for (size_t i = 0; i < profile_count; i++) {
             log_print(LOG_ALIGNED, "%s", profile_symbols[i]);
         }
+    }
+
+    if (exe_count > 0) {
+        log_print(LOG_INFO, "Found %zu executable declaration(s).", exe_count);
+        for (size_t i = 0; i < exe_count; i++)
+            log_print(LOG_ALIGNED, "%s", exe_symbols[i]);
+    }
+
+    if (lib_count > 0) {
+        log_print(LOG_INFO, "Found %zu library declaration(s).", lib_count);
+        for (size_t i = 0; i < lib_count; i++)
+            log_print(LOG_ALIGNED, "%s", lib_symbols[i]);
     }
 
     if (!symbol) {
@@ -85,6 +108,26 @@ int main(void) {
     LoadedProject lp = load_project(LIB_PATH, symbol);
     if (!lp.project)
         return 1;
+
+    // Step 5: stamp TargetKind and name on loaded Executable/Library symbols
+    //         (the .nour file doesn't set .kind/.name, we inject them here)
+    {
+        void *handle = lp.handle;
+        for (size_t i = 0; i < exe_count; i++) {
+            Executable *exe = (Executable *)dlsym(handle, exe_symbols[i]);
+            if (exe) {
+                exe->kind = TARGET_EXECUTABLE;
+                exe->name = (char *)exe_symbols[i];
+            }
+        }
+        for (size_t i = 0; i < lib_count; i++) {
+            Library *lib = (Library *)dlsym(handle, lib_symbols[i]);
+            if (lib) {
+                lib->kind = TARGET_LIBRARY;
+                lib->name = (char *)lib_symbols[i];
+            }
+        }
+    }
 
     print_project(lp.project, lp.name);
 

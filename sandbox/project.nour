@@ -1,20 +1,40 @@
 #include "nour.h"
 
-Project sandbox_app = {
-    .version = "0.1.0",
-    .cc = "gcc",
-    .type = EXE,
+Library math_utils = {
+    .type = STATIC,
+    .sources = {
+        "sandbox/math/*.c",
+    },
+    .includes = { "sandbox/math" },
+};
+
+Library math_utils_shared = {
+    .type = SHARED,
+    .sources = {
+        "sandbox/math/*.c",
+    },
+    .includes = { "sandbox/math" },
+};
+
+Executable sandbox_app = {
     .sources = {
         "sandbox/*.c",
-        "sandbox/math/*.c",
-        "sandbox/utils/*.c"
+        "sandbox/utils/*.c",
     },
+    .includes = { "sandbox" },
+};
+
+Project project = {
+    .version = "0.1.0",
+    .cc = "gcc",
+    .build_dir = "build",
+    .targets = { &math_utils, &math_utils_shared, &sandbox_app },
 };
 
 Profile debug = {
     .optimize = OPT_DEBUG,
     .warnings = WARN_ALL | WARN_EXTRA,
     .sanitizers = SAN_NONE,
-    .cflags = { "-Isandbox" }
+    .cflags = { "-Isandbox" },
 };
 

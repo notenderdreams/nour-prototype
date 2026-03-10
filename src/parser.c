@@ -49,14 +49,20 @@ static void count_braces(const char *line, int *depth) {
 
 // Detect ".field = {" where '{' is NOT preceded by ')' (no existing cast).
 // Returns pointer to the '{', or NULL if not a bare array assignment.
-static const char *match_bare_array(const char *line) {
+// If field_out is non-NULL, writes the field name into it.
+static const char *match_bare_array(const char *line, char *field_out, size_t field_max) {
     const char *p = line;
     while (*p && isspace((unsigned char)*p)) p++;
     if (*p != '.') return NULL;
     p++;
-    // identifier
+    // identifier — capture into field_out
     if (!isalpha((unsigned char)*p) && *p != '_') return NULL;
-    while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+    size_t fi = 0;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_')) {
+        if (field_out && fi < field_max - 1) field_out[fi++] = *p;
+        p++;
+    }
+    if (field_out) field_out[fi] = '\0';
     // ' = '
     while (*p && isspace((unsigned char)*p)) p++;
     if (*p != '=') return NULL;
@@ -68,6 +74,12 @@ static const char *match_bare_array(const char *line) {
     while (look > line && isspace((unsigned char)*look)) look--;
     if (*look == ')') return NULL;
     return p; // points at '{'
+}
+
+// Returns the compound-literal cast to use for a given field name.
+static const char *cast_for_field(const char *field) {
+    if (strcmp(field, "targets") == 0) return "(void*[])";
+    return "(char*[])";
 }
 
 int nour_preprocess(const char *input_path, const char *output_path,
@@ -110,11 +122,14 @@ int nour_preprocess(const char *input_path, const char *output_path,
             in_decl = 1;
 
         } else if (in_decl && !in_array) {
-            const char *brace = match_bare_array(line);
+            char field_name[NOUR_DECL_MAX_NAME] = {0};
+            const char *brace = match_bare_array(line, field_name, sizeof(field_name));
             if (brace) {
-                // Write ".field = (char*[]{" prefix
+                const char *cast = cast_for_field(field_name);
+                // Write ".field = (<cast>){" prefix
                 fwrite(line, 1, (size_t)(brace - line), out);
-                fputs("(char*[]){", out);
+                fputs(cast, out);
+                fputs("{", out);
 
                 const char *rest = brace + 1;
 
@@ -155,9 +170,8 @@ int nour_preprocess(const char *input_path, const char *output_path,
             if (array_depth + delta == 0) {
                 // This line closes the array — inject NULL before the last '}'
                 char *last_brace = strrchr(line, '}');
-                // trim trailing whitespace/comma before the brace to find insert point
                 fwrite(line, 1, (size_t)(last_brace - line), out);
-                fputs(", NULL\n}", out);
+                fputs("NULL\n}", out);
                 fputs(last_brace + 1, out);
                 array_depth = 0;
                 in_array    = 0;
