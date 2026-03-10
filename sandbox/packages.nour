@@ -1,0 +1,11 @@
+#include "nour.h"
+
+Package example_cstatic = {
+    .lib = "sandbox/compiled_static/lib/libexample_cstatic.a",
+    .includes = { "sandbox/compiled_static/include" },
+};
+
+Package example_cdynamic = {
+    .lib = "sandbox/compiled_dynamic/lib/libexample_cdynamic.dylib",
+    .includes = { "sandbox/compiled_dynamic/include" },
+};

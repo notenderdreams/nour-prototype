@@ -46,7 +46,7 @@ int main(void) {
     if (ensure_directory("build") != 0) return 1;
 
     // Step 1: preprocess .nour → valid C, extract declarations
-    NourDecl decls[16];
+    NourDecl decls[NOUR_MAX_DECLS];
     size_t   decl_count = 0;
     if (nour_preprocess(NOUR_FILE, NOUR_C_FILE, decls, &decl_count) != 0)
         return 1;

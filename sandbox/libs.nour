@@ -1,0 +1,17 @@
+#include "nour.h"
+
+Library math_utils = {
+    .type = STATIC,
+    .sources = {
+        "sandbox/math/*.c",
+    },
+    .includes = { "sandbox/math" },
+};
+
+Library math_utils_shared = {
+    .type = SHARED,
+    .sources = {
+        "sandbox/math/*.c",
+    },
+    .includes = { "sandbox/math" },
+};

@@ -1,30 +1,34 @@
 #include "nour.h"
+#include "libs.nour"
+#include "packages.nour"
 
-Library math_utils = {
-    .type = STATIC,
-    .sources = {
-        "sandbox/math/*.c",
-    },
-    .includes = { "sandbox/math" },
-};
+//!lib.nour
+// Library math_utils = {
+//     .type = STATIC,
+//     .sources = {
+//         "sandbox/math/*.c",
+//     },
+//     .includes = { "sandbox/math" },
+// };
 
-Library math_utils_shared = {
-    .type = SHARED,
-    .sources = {
-        "sandbox/math/*.c",
-    },
-    .includes = { "sandbox/math" },
-};
+// Library math_utils_shared = {
+//     .type = SHARED,
+//     .sources = {
+//         "sandbox/math/*.c",
+//     },
+//     .includes = { "sandbox/math" },
+// };
+//!lib.nour
+// Package example_cstatic = {
+//     .lib = "sandbox/compiled_static/lib/libexample_cstatic.a",
+//     .includes = { "sandbox/compiled_static/include" },
+// };
 
-Package example_cstatic = {
-    .lib = "sandbox/compiled_static/lib/libexample_cstatic.a",
-    .includes = { "sandbox/compiled_static/include" },
-};
+// Package example_cdynamic = {
+//     .lib = "sandbox/compiled_dynamic/lib/libexample_cdynamic.dylib",
+//     .includes = { "sandbox/compiled_dynamic/include" },
+// };
 
-Package example_cdynamic = {
-    .lib = "sandbox/compiled_dynamic/lib/libexample_cdynamic.dylib",
-    .includes = { "sandbox/compiled_dynamic/include" },
-};
 
 Executable sandbox_app = {
     .sources = {
