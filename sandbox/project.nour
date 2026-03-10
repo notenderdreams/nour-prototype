@@ -1,32 +1,32 @@
 #include "nour.h"
 #include "libs.nour"
-#include "packages.nour"
+#include "compiled_static/package_static.nour"
+#include "compiled_dynamic/package_dynamic.nour"
 
 //!lib.nour
 // Library math_utils = {
 //     .type = STATIC,
 //     .sources = {
-//         "sandbox/math/*.c",
+//         "math/*.c",
 //     },
-//     .includes = { "sandbox/math" },
+//     .includes = { "math" },
 // };
-
 // Library math_utils_shared = {
 //     .type = SHARED,
 //     .sources = {
-//         "sandbox/math/*.c",
+//         "math/*.c",
 //     },
-//     .includes = { "sandbox/math" },
-// };
-//!lib.nour
-// Package example_cstatic = {
-//     .lib = "sandbox/compiled_static/lib/libexample_cstatic.a",
-//     .includes = { "sandbox/compiled_static/include" },
+//     .includes = { "math" },
 // };
 
+//!packages.nour
+// Package example_cstatic = {
+//     .lib = "lib/libexample_cstatic.a",
+//     .includes = { "include" },
+// };
 // Package example_cdynamic = {
-//     .lib = "sandbox/compiled_dynamic/lib/libexample_cdynamic.dylib",
-//     .includes = { "sandbox/compiled_dynamic/include" },
+//     .lib = "lib/libexample_cdynamic.dylib",
+//     .includes = { "include" },
 // };
 
 

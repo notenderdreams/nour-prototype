@@ -45,10 +45,13 @@ static int compile_nour_so(const char *c_file, const char *so_file) {
 int main(void) {
     if (ensure_directory("build") != 0) return 1;
 
-    // Step 1: preprocess .nour → valid C, extract declarations
+    // Step 1: preprocess .nour → valid C, extract declarations + imports
     NourDecl decls[NOUR_MAX_DECLS];
     size_t   decl_count = 0;
-    if (nour_preprocess(NOUR_FILE, NOUR_C_FILE, decls, &decl_count) != 0)
+    NourImport imports[NOUR_MAX_INCLUDES];
+    size_t import_count = 0;
+    if (nour_preprocess(NOUR_FILE, NOUR_C_FILE, decls, &decl_count,
+                        imports, &import_count) != 0)
         return 1;
 
     // Step 2: find declarations we care about

@@ -84,6 +84,65 @@ static const char *cast_for_field(const char *field) {
     return "(char*[])";
 }
 
+// Fields whose string values are file paths that need base_dir prefixing.
+static int is_path_field(const char *field) {
+    return strcmp(field, "sources") == 0
+        || strcmp(field, "includes") == 0
+        || strcmp(field, "lib") == 0;
+}
+
+// Detect ".field = \"value\"" (single-value string assignment, not array).
+// Returns 1 if matched and writes field name into field_out.
+static int match_single_string_field(const char *line, char *field_out, size_t field_max) {
+    const char *p = line;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p != '.') return 0;
+    p++;
+    if (!isalpha((unsigned char)*p) && *p != '_') return 0;
+    size_t fi = 0;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_')) {
+        if (fi < field_max - 1) field_out[fi++] = *p;
+        p++;
+    }
+    field_out[fi] = '\0';
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p != '=') return 0;
+    p++;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p == '{') return 0; // that's an array, not single value
+    if (*p == '"') return 1; // single string value
+    return 0;
+}
+
+// Rewrite all "..." strings in a line by prepending base_dir.
+// Writes result to out (must be large enough). Skips absolute paths.
+static void rewrite_strings_in_line(const char *line, const char *base_dir,
+                                    char *out, size_t out_max) {
+    size_t oi = 0;
+    const char *p = line;
+    size_t bd_len = strlen(base_dir);
+
+    while (*p && oi < out_max - 1) {
+        if (*p == '"') {
+            out[oi++] = *p++; // opening quote
+            // If string starts with '/' it's absolute — don't prefix
+            if (*p != '/' && bd_len > 0) {
+                // Prepend base_dir
+                for (size_t j = 0; j < bd_len && oi < out_max - 1; j++)
+                    out[oi++] = base_dir[j];
+            }
+            // Copy until closing quote
+            while (*p && *p != '"' && oi < out_max - 1)
+                out[oi++] = *p++;
+            if (*p == '"' && oi < out_max - 1)
+                out[oi++] = *p++; // closing quote
+        } else {
+            out[oi++] = *p++;
+        }
+    }
+    out[oi] = '\0';
+}
+
 // Check if a line is  #include "something.nour"
 // If so, write the included filename (between quotes) into path_out.
 // Returns 1 on match, 0 otherwise.
@@ -112,6 +171,11 @@ static int match_nour_include(const char *line, char *path_out, size_t path_max)
 // Resolve an include path relative to the directory of the including file.
 static void resolve_include_path(const char *base_file, const char *include_name,
                                  char *out, size_t out_max) {
+    if (include_name[0] == '/') {
+        snprintf(out, out_max, "%s", include_name);
+        return;
+    }
+
     // Make a mutable copy for dirname()
     char base_copy[1024];
     strncpy(base_copy, base_file, sizeof(base_copy) - 1);
@@ -121,10 +185,27 @@ static void resolve_include_path(const char *base_file, const char *include_name
     snprintf(out, out_max, "%s/%s", dir, include_name);
 }
 
+// Compute the base directory of a file path (e.g. "sandbox/compiled_static/foo.nour"
+// → "sandbox/compiled_static/"). Returns "" for files in the current directory.
+static void compute_base_dir(const char *file_path, char *out, size_t out_max) {
+    const char *last_slash = strrchr(file_path, '/');
+    if (!last_slash) {
+        out[0] = '\0';
+        return;
+    }
+    size_t len = (size_t)(last_slash - file_path + 1); // include trailing /
+    if (len >= out_max) len = out_max - 1;
+    memcpy(out, file_path, len);
+    out[len] = '\0';
+}
+
 // Internal recursive preprocessor: reads input_path, writes to already-opened out,
 // collects declarations, tracks visited files to prevent circular includes.
-static int nour_preprocess_recursive(const char *input_path, FILE *out,
+// base_dir is the directory prefix to prepend to path fields (empty for root file).
+static int nour_preprocess_recursive(const char *input_path, const char *base_dir,
+                                     FILE *out,
                                      NourDecl *decls, size_t *decl_count,
+                                     NourImport *imports, size_t *import_count,
                                      const char **visited, size_t *visited_count) {
     // Circular include guard
     for (size_t i = 0; i < *visited_count; i++) {
@@ -154,12 +235,15 @@ static int nour_preprocess_recursive(const char *input_path, FILE *out,
     }
 
     log_print(LOG_INFO, "Preprocessing: %s", input_path);
+    if (base_dir[0])
+        log_print(LOG_ALIGNED, "base_dir: %s", base_dir);
 
     char line[1024];
     int  depth       = 0;
     int  in_decl     = 0;
     int  in_array    = 0;
     int  array_depth = 0;
+    int  path_field  = 0; // whether the current array field needs path rewriting
 
     while (fgets(line, sizeof(line), in)) {
         char type[NOUR_DECL_MAX_NAME], sym[NOUR_DECL_MAX_NAME];
@@ -170,8 +254,23 @@ static int nour_preprocess_recursive(const char *input_path, FILE *out,
             char resolved[1024];
             resolve_include_path(input_path, inc_name, resolved, sizeof(resolved));
 
+            // Compute the included file's base_dir for path rewriting
+            char child_base_dir[NOUR_MAX_PATH];
+            compute_base_dir(resolved, child_base_dir, sizeof(child_base_dir));
+
+            // Record this import
+            if (*import_count < NOUR_MAX_INCLUDES) {
+                strncpy(imports[*import_count].path, resolved, NOUR_MAX_PATH - 1);
+                imports[*import_count].path[NOUR_MAX_PATH - 1] = '\0';
+                strncpy(imports[*import_count].base_dir, child_base_dir, NOUR_MAX_PATH - 1);
+                imports[*import_count].base_dir[NOUR_MAX_PATH - 1] = '\0';
+                (*import_count)++;
+            }
+
             fprintf(out, "// --- included from %s ---\n", inc_name);
-            int rc = nour_preprocess_recursive(resolved, out, decls, decl_count,
+            int rc = nour_preprocess_recursive(resolved, child_base_dir, out,
+                                               decls, decl_count,
+                                               imports, import_count,
                                                visited, visited_count);
             fprintf(out, "// --- end %s ---\n", inc_name);
             if (rc != 0) {
@@ -198,6 +297,7 @@ static int nour_preprocess_recursive(const char *input_path, FILE *out,
             char field_name[NOUR_DECL_MAX_NAME] = {0};
             const char *brace = match_bare_array(line, field_name, sizeof(field_name));
             if (brace) {
+                path_field = (base_dir[0] && is_path_field(field_name));
                 const char *cast = cast_for_field(field_name);
                 fwrite(line, 1, (size_t)(brace - line), out);
                 fputs(cast, out);
@@ -212,20 +312,52 @@ static int nour_preprocess_recursive(const char *input_path, FILE *out,
                 }
 
                 if (d == 0) {
-                    char *last = strrchr((char *)rest, '}');
-                    fwrite(rest, 1, (size_t)(last - rest), out);
-                    fputs(", NULL}", out);
-                    fputs(last + 1, out);
+                    // Single-line array — rewrite if path field
+                    if (path_field) {
+                        char rewritten[2048];
+                        // Extract just the content between braces
+                        char *last = strrchr((char *)rest, '}');
+                        char content[2048];
+                        size_t clen = (size_t)(last - rest);
+                        if (clen >= sizeof(content)) clen = sizeof(content) - 1;
+                        memcpy(content, rest, clen);
+                        content[clen] = '\0';
+                        rewrite_strings_in_line(content, base_dir, rewritten, sizeof(rewritten));
+                        fputs(rewritten, out);
+                        fputs(", NULL}", out);
+                        fputs(last + 1, out);
+                    } else {
+                        char *last = strrchr((char *)rest, '}');
+                        fwrite(rest, 1, (size_t)(last - rest), out);
+                        fputs(", NULL}", out);
+                        fputs(last + 1, out);
+                    }
                 } else {
-                    fputs(rest, out);
+                    // Multi-line array — rewrite rest if path field
+                    if (path_field) {
+                        char rewritten[2048];
+                        rewrite_strings_in_line(rest, base_dir, rewritten, sizeof(rewritten));
+                        fputs(rewritten, out);
+                    } else {
+                        fputs(rest, out);
+                    }
                     in_array    = 1;
                     array_depth = d;
                 }
             } else {
+                // Check for single-value string path field: .lib = "path"
+                char sfield[NOUR_DECL_MAX_NAME] = {0};
+                if (base_dir[0] && match_single_string_field(line, sfield, sizeof(sfield))
+                    && is_path_field(sfield)) {
+                    char rewritten[2048];
+                    rewrite_strings_in_line(line, base_dir, rewritten, sizeof(rewritten));
+                    fputs(rewritten, out);
+                } else {
+                    fputs(line, out);
+                }
                 count_braces(line, &depth);
                 if (in_decl && depth == 0)
                     in_decl = 0;
-                fputs(line, out);
             }
 
         } else if (in_array) {
@@ -237,14 +369,31 @@ static int nour_preprocess_recursive(const char *input_path, FILE *out,
 
             if (array_depth + delta == 0) {
                 char *last_brace = strrchr(line, '}');
-                fwrite(line, 1, (size_t)(last_brace - line), out);
+                if (path_field) {
+                    char content[2048], rewritten[2048];
+                    size_t clen = (size_t)(last_brace - line);
+                    if (clen >= sizeof(content)) clen = sizeof(content) - 1;
+                    memcpy(content, line, clen);
+                    content[clen] = '\0';
+                    rewrite_strings_in_line(content, base_dir, rewritten, sizeof(rewritten));
+                    fputs(rewritten, out);
+                } else {
+                    fwrite(line, 1, (size_t)(last_brace - line), out);
+                }
                 fputs("NULL\n}", out);
                 fputs(last_brace + 1, out);
                 array_depth = 0;
                 in_array    = 0;
+                path_field  = 0;
             } else {
                 array_depth += delta;
-                fputs(line, out);
+                if (path_field) {
+                    char rewritten[2048];
+                    rewrite_strings_in_line(line, base_dir, rewritten, sizeof(rewritten));
+                    fputs(rewritten, out);
+                } else {
+                    fputs(line, out);
+                }
             }
 
         } else {
@@ -260,8 +409,10 @@ static int nour_preprocess_recursive(const char *input_path, FILE *out,
 }
 
 int nour_preprocess(const char *input_path, const char *output_path,
-                    NourDecl *decls, size_t *decl_count) {
+                    NourDecl *decls, size_t *decl_count,
+                    NourImport *imports, size_t *import_count) {
     *decl_count = 0;
+    *import_count = 0;
 
     FILE *out = fopen(output_path, "w");
     if (!out) {
@@ -272,8 +423,19 @@ int nour_preprocess(const char *input_path, const char *output_path,
     const char *visited[NOUR_MAX_INCLUDES];
     size_t visited_count = 0;
 
-    int rc = nour_preprocess_recursive(input_path, out, decls, decl_count,
+    // Root file: base_dir is "" so its paths are NOT rewritten
+    int rc = nour_preprocess_recursive(input_path, "", out,
+                                       decls, decl_count,
+                                       imports, import_count,
                                        visited, &visited_count);
     fclose(out);
+
+    if (rc == 0 && *import_count > 0) {
+        log_print(LOG_INFO, "Imported %zu config file(s):", *import_count);
+        for (size_t i = 0; i < *import_count; i++)
+            log_print(LOG_ALIGNED, "%s (base: %s)",
+                      imports[i].path, imports[i].base_dir);
+    }
+
     return rc;
 }

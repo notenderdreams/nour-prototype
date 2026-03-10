@@ -1,0 +1,6 @@
+#include "nour.h"
+
+Package example_cdynamic = {
+    .lib = "lib/libexample_cdynamic.dylib",
+    .includes = { "include" },
+};

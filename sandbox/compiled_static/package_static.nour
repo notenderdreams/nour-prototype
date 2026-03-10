@@ -1,0 +1,6 @@
+#include "nour.h"
+
+Package example_cstatic = {
+    .lib = "lib/libexample_cstatic.a",
+    .includes = { "include" },
+};

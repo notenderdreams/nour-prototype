@@ -3,15 +3,15 @@
 Library math_utils = {
     .type = STATIC,
     .sources = {
-        "sandbox/math/*.c",
+        "math/*.c",
     },
-    .includes = { "sandbox/math" },
+    .includes = { "math" },
 };
 
 Library math_utils_shared = {
     .type = SHARED,
     .sources = {
-        "sandbox/math/*.c",
+        "math/*.c",
     },
-    .includes = { "sandbox/math" },
+    .includes = { "math" },
 };
