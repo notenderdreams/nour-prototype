@@ -11,31 +11,20 @@
 //     },
 //     .includes = { "math" },
 // };
-// Library math_utils_shared = {
-//     .type = SHARED,
-//     .sources = {
-//         "math/*.c",
-//     },
-//     .includes = { "math" },
-// };
 
 //!packages.nour
 // Package example_cstatic = {
 //     .lib = "lib/libexample_cstatic.a",
 //     .includes = { "include" },
 // };
-// Package example_cdynamic = {
-//     .lib = "lib/libexample_cdynamic.dylib",
-//     .includes = { "include" },
-// };
 
 
 Executable sandbox_app = {
     .sources = {
-        "sandbox/*.c",
-        "sandbox/utils/*.c",
+        "*.c",
+        "utils/*.c",
     },
-    .includes = { "sandbox" },
+    .includes = { "." },
     .deps = { &math_utils, &example_cstatic, &example_cdynamic },
 };
 
@@ -50,6 +39,6 @@ Profile debug = {
     .optimize = OPT_DEBUG,
     .warnings = WARN_ALL | WARN_EXTRA,
     .sanitizers = SAN_NONE,
-    .cflags = { "-Isandbox" },
+    .cflags = { "-I." },
 };
 

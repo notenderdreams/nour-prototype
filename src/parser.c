@@ -85,10 +85,12 @@ static const char *cast_for_field(const char *field) {
 }
 
 // Fields whose string values are file paths that need base_dir prefixing.
+// build_dir is included so sandbox configs get their own build subdir.
 static int is_path_field(const char *field) {
     return strcmp(field, "sources") == 0
         || strcmp(field, "includes") == 0
-        || strcmp(field, "lib") == 0;
+        || strcmp(field, "lib") == 0
+        || strcmp(field, "build_dir") == 0;
 }
 
 // Detect ".field = \"value\"" (single-value string assignment, not array).
@@ -116,6 +118,7 @@ static int match_single_string_field(const char *line, char *field_out, size_t f
 
 // Rewrite all "..." strings in a line by prepending base_dir.
 // Writes result to out (must be large enough). Skips absolute paths.
+// Collapses trailing "/." (bare dot component) → clean directory path.
 static void rewrite_strings_in_line(const char *line, const char *base_dir,
                                     char *out, size_t out_max) {
     size_t oi = 0;
@@ -127,13 +130,21 @@ static void rewrite_strings_in_line(const char *line, const char *base_dir,
             out[oi++] = *p++; // opening quote
             // If string starts with '/' it's absolute — don't prefix
             if (*p != '/' && bd_len > 0) {
-                // Prepend base_dir
+                // Prepend base_dir (strip trailing slash before merging with ".")
                 for (size_t j = 0; j < bd_len && oi < out_max - 1; j++)
                     out[oi++] = base_dir[j];
             }
             // Copy until closing quote
+            const char *val_start_out = out + oi;
             while (*p && *p != '"' && oi < out_max - 1)
                 out[oi++] = *p++;
+            // Collapse: if the original value was "." (current dir), strip the
+            // trailing "/." that base_dir + "." produces → leaves clean dir path.
+            size_t written = (size_t)((out + oi) - val_start_out);
+            if (written == 1 && val_start_out[0] == '.' && bd_len > 0
+                && base_dir[bd_len - 1] == '/') {
+                oi -= 2; // strip the "/" prefix char + the "." → keep base_dir minus trailing "/"
+            }
             if (*p == '"' && oi < out_max - 1)
                 out[oi++] = *p++; // closing quote
         } else {
@@ -423,8 +434,12 @@ int nour_preprocess(const char *input_path, const char *output_path,
     const char *visited[NOUR_MAX_INCLUDES];
     size_t visited_count = 0;
 
-    // Root file: base_dir is "" so its paths are NOT rewritten
-    int rc = nour_preprocess_recursive(input_path, "", out,
+    // Compute base_dir for the root file just like any included file.
+    // This makes all .nour files use paths relative to their own directory.
+    char root_base_dir[NOUR_MAX_PATH];
+    compute_base_dir(input_path, root_base_dir, sizeof(root_base_dir));
+
+    int rc = nour_preprocess_recursive(input_path, root_base_dir, out,
                                        decls, decl_count,
                                        imports, import_count,
                                        visited, &visited_count);

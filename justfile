@@ -6,7 +6,7 @@ main:
 
 # Run the compiled sandbox app
 run: main
-    ./build/sandbox_app
+    ./sandbox/build/sandbox_app
 
 # Run tests
 test:
