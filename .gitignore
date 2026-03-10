@@ -1,2 +1,5 @@
 /build
 */build
+*.dylib
+*.a
+*.so
