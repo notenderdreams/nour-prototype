@@ -452,9 +452,9 @@ int compile_project(const Project *project, const char *name) {
     if (project->targets) {
         const char *build_dir = project->build_dir ? project->build_dir : "build";
 
-        // Collect library output paths (build libraries first)
-        const char *lib_outputs[16];
-        size_t lib_output_count = 0;
+        // Mapping from target pointer → built output path
+        struct { void *target; char path[256]; } lib_entries[16];
+        size_t lib_entry_count = 0;
 
         // Pass 1: build all Library targets
         for (void **t = project->targets; *t; t++) {
@@ -469,24 +469,41 @@ int compile_project(const Project *project, const char *name) {
             const char *tgt_name = lib->name ? lib->name : name;
             ProjectType ptype = (lib->type == SHARED) ? DYNAMIC_LIB : STATIC_LIB;
 
-            int rc = compile_target(project, lib->sources, ptype, tgt_name, NULL, 0);
+            // Resolve this library's own deps (e.g. shared lib linking another lib)
+            const char *dep_paths[16];
+            size_t dep_count = 0;
+            if (lib->deps) {
+                for (void **d = lib->deps; *d; d++) {
+                    if (*(TargetKind *)(*d) == TARGET_LIBRARY) {
+                        for (size_t j = 0; j < lib_entry_count; j++) {
+                            if (lib_entries[j].target == *d) {
+                                if (dep_count < 16)
+                                    dep_paths[dep_count++] = lib_entries[j].path;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            int rc = compile_target(project, lib->sources, ptype, tgt_name,
+                                    dep_paths, dep_count);
             if (rc != 0) return rc;
 
-            // Record the output path so executables can link against it
-            if (lib_output_count < 16) {
-                static char lib_path_buf[16][256];
+            // Record the output path for later dep resolution
+            if (lib_entry_count < 16) {
+                lib_entries[lib_entry_count].target = lib;
                 if (ptype == STATIC_LIB)
-                    snprintf(lib_path_buf[lib_output_count], 256,
+                    snprintf(lib_entries[lib_entry_count].path, 256,
                              "%s/lib%s.a", build_dir, tgt_name);
                 else
-                    snprintf(lib_path_buf[lib_output_count], 256,
+                    snprintf(lib_entries[lib_entry_count].path, 256,
                              "%s/lib%s.so", build_dir, tgt_name);
-                lib_outputs[lib_output_count] = lib_path_buf[lib_output_count];
-                lib_output_count++;
+                lib_entry_count++;
             }
         }
 
-        // Pass 2: build all Executable targets, linking against library outputs
+        // Pass 2: build all Executable targets, linking only declared deps
         for (void **t = project->targets; *t; t++) {
             TargetKind kind = *(TargetKind *)(*t);
             if (kind != TARGET_EXECUTABLE) continue;
@@ -498,8 +515,25 @@ int compile_project(const Project *project, const char *name) {
             }
             const char *tgt_name = exe->name ? exe->name : name;
 
+            // Resolve deps to library output paths
+            const char *dep_paths[16];
+            size_t dep_count = 0;
+            if (exe->deps) {
+                for (void **d = exe->deps; *d; d++) {
+                    if (*(TargetKind *)(*d) == TARGET_LIBRARY) {
+                        for (size_t j = 0; j < lib_entry_count; j++) {
+                            if (lib_entries[j].target == *d) {
+                                if (dep_count < 16)
+                                    dep_paths[dep_count++] = lib_entries[j].path;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             int rc = compile_target(project, exe->sources, EXE, tgt_name,
-                                    lib_outputs, lib_output_count);
+                                    dep_paths, dep_count);
             if (rc != 0) return rc;
         }
 

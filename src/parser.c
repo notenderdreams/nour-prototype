@@ -79,6 +79,7 @@ static const char *match_bare_array(const char *line, char *field_out, size_t fi
 // Returns the compound-literal cast to use for a given field name.
 static const char *cast_for_field(const char *field) {
     if (strcmp(field, "targets") == 0) return "(void*[])";
+    if (strcmp(field, "deps") == 0)    return "(void*[])";
     return "(char*[])";
 }
 

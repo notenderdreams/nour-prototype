@@ -27,6 +27,19 @@ static inline void print_executable(const Executable *exe, const char *name) {
         for (char **s = exe->includes; *s; s++)
             log_print(LOG_ALIGNED, "  %s", *s);
     }
+    if (exe->deps) {
+        log_print(LOG_ALIGNED, "deps:");
+        for (void **d = exe->deps; *d; d++) {
+            TargetKind dk = *(TargetKind *)(*d);
+            if (dk == TARGET_LIBRARY) {
+                const Library *dep = (const Library *)(*d);
+                log_print(LOG_ALIGNED, "  %s (library)", dep->name ? dep->name : "?");
+            } else if (dk == TARGET_EXECUTABLE) {
+                const Executable *dep = (const Executable *)(*d);
+                log_print(LOG_ALIGNED, "  %s (executable)", dep->name ? dep->name : "?");
+            }
+        }
+    }
 }
 
 static inline void print_library(const Library *lib, const char *name) {
@@ -43,6 +56,16 @@ static inline void print_library(const Library *lib, const char *name) {
         log_print(LOG_ALIGNED, "includes:");
         for (char **s = lib->includes; *s; s++)
             log_print(LOG_ALIGNED, "  %s", *s);
+    }
+    if (lib->deps) {
+        log_print(LOG_ALIGNED, "deps:");
+        for (void **d = lib->deps; *d; d++) {
+            TargetKind dk = *(TargetKind *)(*d);
+            if (dk == TARGET_LIBRARY) {
+                const Library *dep = (const Library *)(*d);
+                log_print(LOG_ALIGNED, "  %s (library)", dep->name ? dep->name : "?");
+            }
+        }
     }
 }
 

@@ -22,6 +22,7 @@ Executable sandbox_app = {
         "sandbox/utils/*.c",
     },
     .includes = { "sandbox" },
+    .deps = { &math_utils },
 };
 
 Project project = {

@@ -59,7 +59,7 @@ typedef struct {
     char        *name;      // symbol name (set automatically)
     char       **sources;
     char       **includes;
-    // void **deps;         // TODO: dependency list (Executable*/Library*)
+    void       **deps;      // NULL-terminated list of Executable*/Library*
 } Executable;
 
 typedef struct {
@@ -68,7 +68,7 @@ typedef struct {
     LibraryType  type;      // STATIC or SHARED
     char       **sources;
     char       **includes;
-    // void **deps;         // TODO: dependency list
+    void       **deps;      // NULL-terminated list of Library*
 } Library;
 
 // ── Build profile ───────────────────────────────────────────────────
