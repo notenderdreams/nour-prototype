@@ -459,6 +459,26 @@ cleanup:
     return result;
 }
 
+// Expand glob patterns from pkg->sources into dep_paths[].
+// Returns updated dep_count. Uses a caller-supplied arena for glob results.
+static size_t collect_package_sources(Arena *arena, Package *pkg,
+                                      const char **dep_paths,
+                                      size_t dep_count, size_t max) {
+    if (!pkg->sources) return dep_count;
+    for (char **s = pkg->sources; *s; s++) {
+        FileList files = expand_glob(arena, *s);
+        if (files.count == 0) {
+            // No matches — pass the pattern through as a literal (like a bare -l path)
+            if (dep_count < max)
+                dep_paths[dep_count++] = *s;
+        } else {
+            for (size_t i = 0; i < files.count && dep_count < max; i++)
+                dep_paths[dep_count++] = files.files[i];
+        }
+    }
+    return dep_count;
+}
+
 // ── Library build registry ──────────────────────────────────────────
 // Tracks which Library targets have been built and where their
 // artifacts live. ensure_lib_built() is idempotent: calling it for a
@@ -495,12 +515,16 @@ static int ensure_lib_built(const Project *project, Library *lib,
     const char *dep_incs[32];
     size_t dep_count = 0;
     size_t inc_count = 0;
+    Arena *pkg_arena = NULL;
     if (lib->deps) {
+        pkg_arena = arena_create(4096);
         for (void **d = lib->deps; *d; d++) {
             TargetKind dk = *(TargetKind *)(*d);
             if (dk == TARGET_LIBRARY) {
-                if (ensure_lib_built(project, (Library *)(*d), entries, count) != 0)
+                if (ensure_lib_built(project, (Library *)(*d), entries, count) != 0) {
+                    arena_destroy(pkg_arena);
                     return 1;
+                }
                 for (size_t j = 0; j < *count; j++) {
                     if (entries[j].target == *d) {
                         if (dep_count < 16)
@@ -515,12 +539,8 @@ static int ensure_lib_built(const Project *project, Library *lib,
                 }
             } else if (dk == TARGET_PACKAGE) {
                 Package *pkg = (Package *)(*d);
-                if (pkg->sources) {
-                    for (char **s = pkg->sources; *s; s++) {
-                        if (dep_count < 16)
-                            dep_paths[dep_count++] = *s;
-                    }
-                }
+                dep_count = collect_package_sources(pkg_arena, pkg,
+                                                    dep_paths, dep_count, 16);
                 if (pkg->includes) {
                     for (char **s = pkg->includes; *s; s++)
                         if (inc_count < 32) dep_incs[inc_count++] = *s;
@@ -531,6 +551,7 @@ static int ensure_lib_built(const Project *project, Library *lib,
 
     int rc = compile_target(project, lib->sources, ptype, tgt_name,
                             dep_paths, dep_count, dep_incs, inc_count);
+    arena_destroy(pkg_arena);
     if (rc != 0) return rc;
 
     if (*count < MAX_LIB_ENTRIES) {
@@ -581,13 +602,17 @@ int compile_project(const Project *project, const char *name) {
             const char *dep_incs[32];
             size_t dep_count = 0;
             size_t dep_inc_count = 0;
+            Arena *pkg_arena = NULL;
             if (exe->deps) {
+                pkg_arena = arena_create(4096);
                 for (void **d = exe->deps; *d; d++) {
                     TargetKind dk = *(TargetKind *)(*d);
                     if (dk == TARGET_LIBRARY) {
                         if (ensure_lib_built(project, (Library *)(*d),
-                                             lib_entries, &lib_entry_count) != 0)
+                                             lib_entries, &lib_entry_count) != 0) {
+                            arena_destroy(pkg_arena);
                             return 1;
+                        }
                         for (size_t j = 0; j < lib_entry_count; j++) {
                             if (lib_entries[j].target == *d) {
                                 if (dep_count < 16)
@@ -602,12 +627,8 @@ int compile_project(const Project *project, const char *name) {
                         }
                     } else if (dk == TARGET_PACKAGE) {
                         Package *pkg = (Package *)(*d);
-                        if (pkg->sources) {
-                            for (char **s = pkg->sources; *s; s++) {
-                                if (dep_count < 16)
-                                    dep_paths[dep_count++] = *s;
-                            }
-                        }
+                        dep_count = collect_package_sources(pkg_arena, pkg,
+                                                            dep_paths, dep_count, 16);
                         if (pkg->includes) {
                             for (char **s = pkg->includes; *s; s++)
                                 if (dep_inc_count < 32) dep_incs[dep_inc_count++] = *s;
@@ -619,6 +640,7 @@ int compile_project(const Project *project, const char *name) {
             int rc = compile_target(project, exe->sources, EXE, tgt_name,
                                     dep_paths, dep_count,
                                     dep_incs, dep_inc_count);
+            arena_destroy(pkg_arena);
             if (rc != 0) return rc;
         }
 

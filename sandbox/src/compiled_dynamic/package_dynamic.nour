@@ -2,8 +2,7 @@
 
 Package example_cdynamic = {
     .sources = {
-        "lib/libexample_cdynamic.dylib",
-        "lib/libexample_cdynamic_extra.dylib",
+        "lib/*.dylib",
     },
     .includes = { "include" },
 };
