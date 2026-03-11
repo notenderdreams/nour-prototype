@@ -89,7 +89,6 @@ static const char *cast_for_field(const char *field) {
 static int is_path_field(const char *field) {
     return strcmp(field, "sources") == 0
         || strcmp(field, "includes") == 0
-        || strcmp(field, "lib") == 0
         || strcmp(field, "build_dir") == 0;
 }
 
@@ -356,7 +355,7 @@ static int nour_preprocess_recursive(const char *input_path, const char *base_di
                     array_depth = d;
                 }
             } else {
-                // Check for single-value string path field: .lib = "path"
+                // Check for single-value string path field (e.g. .build_dir = "...")
                 char sfield[NOUR_DECL_MAX_NAME] = {0};
                 if (base_dir[0] && match_single_string_field(line, sfield, sizeof(sfield))
                     && is_path_field(sfield)) {

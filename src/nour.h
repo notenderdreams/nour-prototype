@@ -73,13 +73,13 @@ typedef struct {
 } Library;
 
 // ── Pre-compiled package ────────────────────────────────────────────
-// A Package is an already-compiled library (.a / .so / .dylib).
-// No sources are needed; the extension determines static vs shared.
+// A Package is an already-compiled library set (.a / .so / .dylib).
+// sources contains one or more prebuilt library paths.
 
 typedef struct {
     TargetKind   kind;      // TARGET_PACKAGE (set automatically)
     char        *name;      // symbol name (set automatically)
-    char        *lib;       // path to .a / .so / .dylib
+    char       **sources;   // prebuilt lib paths (.a / .so / .dylib)
     char       **includes;  // header search paths
 } Package;
 

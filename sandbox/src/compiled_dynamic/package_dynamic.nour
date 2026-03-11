@@ -1,6 +1,9 @@
 #include "nour.h"
 
 Package example_cdynamic = {
-    .lib = "lib/libexample_cdynamic.dylib",
+    .sources = {
+        "lib/libexample_cdynamic.dylib",
+        "lib/libexample_cdynamic_extra.dylib",
+    },
     .includes = { "include" },
 };

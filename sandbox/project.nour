@@ -14,7 +14,9 @@
 
 //!packages.nour
 // Package example_cstatic = {
-//     .lib = "lib/libexample_cstatic.a",
+//     .sources = {
+//         "lib/libexample_cstatic.a",
+//     },
 //     .includes = { "include" },
 // };
 

@@ -33,7 +33,12 @@ configure:
         -o /tmp/example_cstatic.o \
         sandbox/src/compiled_static/src/example_cstatic.c
     ar rcs sandbox/src/compiled_static/lib/libexample_cstatic.a /tmp/example_cstatic.o
+    gcc -c -Isandbox/src/compiled_static/include \
+        -o /tmp/example_cstatic_extra.o \
+        sandbox/src/compiled_static/src/example_cstatic_extra.c
+    ar rcs sandbox/src/compiled_static/lib/libexample_cstatic_extra.a /tmp/example_cstatic_extra.o
     echo "✓ Static library: sandbox/src/compiled_static/lib/libexample_cstatic.a"
+    echo "✓ Static library: sandbox/src/compiled_static/lib/libexample_cstatic_extra.a"
     
     # Dynamic library
     mkdir -p sandbox/src/compiled_dynamic/lib
@@ -41,5 +46,10 @@ configure:
         -Wl,-install_name,@loader_path/../src/compiled_dynamic/lib/libexample_cdynamic.dylib \
         -o sandbox/src/compiled_dynamic/lib/libexample_cdynamic.dylib \
         sandbox/src/compiled_dynamic/src/example_cdynamic.c
+    gcc -shared -fPIC -Isandbox/src/compiled_dynamic/include \
+        -Wl,-install_name,@loader_path/../src/compiled_dynamic/lib/libexample_cdynamic_extra.dylib \
+        -o sandbox/src/compiled_dynamic/lib/libexample_cdynamic_extra.dylib \
+        sandbox/src/compiled_dynamic/src/example_cdynamic_extra.c
     echo "✓ Dynamic library: sandbox/src/compiled_dynamic/lib/libexample_cdynamic.dylib"
+    echo "✓ Dynamic library: sandbox/src/compiled_dynamic/lib/libexample_cdynamic_extra.dylib"
     echo "Configure complete!"

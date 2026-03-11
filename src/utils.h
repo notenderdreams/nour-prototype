@@ -79,8 +79,11 @@ static inline void print_package(const Package *pkg, const char *name) {
     if (!pkg) return;
     const char *n = pkg->name ? pkg->name : (name ? name : "?");
     log_print(LOG_INFO, "Package: %s", n);
-    if (pkg->lib)
-        log_print(LOG_ALIGNED, "lib: %s", pkg->lib);
+    if (pkg->sources) {
+        log_print(LOG_ALIGNED, "sources:");
+        for (char **s = pkg->sources; *s; s++)
+            log_print(LOG_ALIGNED, "  %s", *s);
+    }
     if (pkg->includes) {
         log_print(LOG_ALIGNED, "includes:");
         for (char **s = pkg->includes; *s; s++)

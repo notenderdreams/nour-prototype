@@ -515,8 +515,12 @@ static int ensure_lib_built(const Project *project, Library *lib,
                 }
             } else if (dk == TARGET_PACKAGE) {
                 Package *pkg = (Package *)(*d);
-                if (pkg->lib && dep_count < 16)
-                    dep_paths[dep_count++] = pkg->lib;
+                if (pkg->sources) {
+                    for (char **s = pkg->sources; *s; s++) {
+                        if (dep_count < 16)
+                            dep_paths[dep_count++] = *s;
+                    }
+                }
                 if (pkg->includes) {
                     for (char **s = pkg->includes; *s; s++)
                         if (inc_count < 32) dep_incs[inc_count++] = *s;
@@ -598,8 +602,12 @@ int compile_project(const Project *project, const char *name) {
                         }
                     } else if (dk == TARGET_PACKAGE) {
                         Package *pkg = (Package *)(*d);
-                        if (pkg->lib && dep_count < 16)
-                            dep_paths[dep_count++] = pkg->lib;
+                        if (pkg->sources) {
+                            for (char **s = pkg->sources; *s; s++) {
+                                if (dep_count < 16)
+                                    dep_paths[dep_count++] = *s;
+                            }
+                        }
                         if (pkg->includes) {
                             for (char **s = pkg->includes; *s; s++)
                                 if (dep_inc_count < 32) dep_incs[dep_inc_count++] = *s;
