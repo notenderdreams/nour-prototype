@@ -44,6 +44,7 @@ static int compile_nour_so(const char *c_file, const char *so_file) {
 
 int main(void) {
     if (ensure_directory("build") != 0) return 1;
+    log_file_init_temp();
 
     // Step 1: preprocess .nour → valid C, extract declarations + imports
     NourDecl decls[NOUR_MAX_DECLS];
@@ -150,10 +151,36 @@ int main(void) {
         }
     }
 
-    print_project(lp.project, lp.name);
+    {
+        const char *bdir = lp.project->build_dir ? lp.project->build_dir : "build";
+        ensure_directory(bdir);
+        char log_path[512];
+        snprintf(log_path, sizeof(log_path), "%s/build.log", bdir);
+        log_file_flush_to(log_path);
+    }
+
+    print_project(lp.project, lp.name, NOUR_FILE);
 
     int rc = compile_project(lp.project, lp.name);
-    unload_project(&lp);
 
+    // ── Console summary ────────────────────────────────────────
+    {
+        size_t built = compile_built_count();
+        size_t up    = compile_uptodate_count();
+        if (built > 0 || up > 0) {
+            console_out("\n  ");
+            if (built > 0 && up > 0)
+                console_out("%zu target%s built, %zu up to date",
+                            built, built == 1 ? "" : "s", up);
+            else if (built > 0)
+                console_out("%zu target%s built", built, built == 1 ? "" : "s");
+            else
+                console_out("%zu target%s up to date", up, up == 1 ? "" : "s");
+            console_out("\n\n");
+        }
+    }
+
+    unload_project(&lp);
+    log_file_close();
     return rc != 0 ? 1 : 0;
 }

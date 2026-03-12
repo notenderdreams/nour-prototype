@@ -30,7 +30,7 @@ Executable sandbox_app = {
     .deps = { &math_utils, &example_cstatic, &example_cdynamic },
 };
 
-Project project = {
+Project DemoProject = {
     .version = "0.1.0",
     .cc = "gcc",
     .build_dir = "build",

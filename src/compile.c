@@ -8,8 +8,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
+
+// ── Build counters (reported in main's summary line) ────────────────
+static size_t g_targets_built    = 0;
+static size_t g_targets_uptodate = 0;
+
+size_t compile_built_count(void)    { return g_targets_built; }
+size_t compile_uptodate_count(void) { return g_targets_uptodate; }
+void   compile_reset_counters(void) { g_targets_built = g_targets_uptodate = 0; }
+
+// Return the basename component of a file path.
+static const char *path_basename(const char *path) {
+    const char *slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
 
 // Build a .o path from a source path: sandbox/basic.c -> build/sandbox_basic.o
 static nstr obj_path_for(Arena *arena, const char *build_dir, const char *source) {
@@ -119,6 +134,9 @@ static int compile_target(const Project *project, char **sources,
         log_print(LOG_ERROR, "Failed to create arena for string building.\n");
         return 1;
     }
+
+    struct timespec t_start;
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
 
     const char *output_name = name;
 
@@ -280,6 +298,15 @@ static int compile_target(const Project *project, char **sources,
                 argv[a++] = all_sources[i];
                 argv[a] = NULL;
 
+                // Console: brief per-file line
+                {
+                    const char *base = path_basename(all_sources[i]);
+                    if (console_use_color())
+                        console_out("  " COLOR_DIM "compiling" COLOR_RESET "  %s\n", base);
+                    else
+                        console_out("  compiling  %s\n", base);
+                }
+                // Log file: full compiler invocation
                 log_argv(LOG_INFO, argv);
 
                 pid_t pid = fork();
@@ -352,6 +379,7 @@ static int compile_target(const Project *project, char **sources,
         }
 
         if (!needs_link) {
+            g_targets_uptodate++;
             log_print(LOG_OK, "Binary up to date: %s\n", nstr_cstr(output_path));
             result = 0;
             goto cleanup;
@@ -386,7 +414,21 @@ static int compile_target(const Project *project, char **sources,
             int status;
             waitpid(pid, &status, 0);
             if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-                log_print(LOG_OK, "Build succeeded: %s\n", nstr_cstr(output_path));
+                struct timespec t_end;
+                clock_gettime(CLOCK_MONOTONIC, &t_end);
+                double elapsed = (double)(t_end.tv_sec  - t_start.tv_sec) +
+                                 (double)(t_end.tv_nsec - t_start.tv_nsec) * 1e-9;
+                if (console_use_color())
+                    console_out("  " COLOR_GREEN "\xe2\x9c\x93" COLOR_RESET " "
+                                COLOR_BOLD "%-20s" COLOR_RESET
+                                COLOR_DIM "  %s  %.1fs" COLOR_RESET "\n",
+                                name, nstr_cstr(output_path), elapsed);
+                else
+                    console_out("  \xe2\x9c\x93 %-20s  %s  %.1fs\n",
+                                name, nstr_cstr(output_path), elapsed);
+                g_targets_built++;
+                log_print(LOG_OK, "Build succeeded: %s (%.2fs)\n",
+                          nstr_cstr(output_path), elapsed);
                 result = 0;
             } else {
                 log_print(LOG_ERROR, "Archiving failed with status: %d\n", WEXITSTATUS(status));
@@ -446,7 +488,21 @@ static int compile_target(const Project *project, char **sources,
             int status;
             waitpid(pid, &status, 0);
             if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-                log_print(LOG_OK, "Build succeeded: %s\n", nstr_cstr(output_path));
+                struct timespec t_end;
+                clock_gettime(CLOCK_MONOTONIC, &t_end);
+                double elapsed = (double)(t_end.tv_sec  - t_start.tv_sec) +
+                                 (double)(t_end.tv_nsec - t_start.tv_nsec) * 1e-9;
+                if (console_use_color())
+                    console_out("  " COLOR_GREEN "\xe2\x9c\x93" COLOR_RESET " "
+                                COLOR_BOLD "%-20s" COLOR_RESET
+                                COLOR_DIM "  %s  %.1fs" COLOR_RESET "\n",
+                                name, nstr_cstr(output_path), elapsed);
+                else
+                    console_out("  \xe2\x9c\x93 %-20s  %s  %.1fs\n",
+                                name, nstr_cstr(output_path), elapsed);
+                g_targets_built++;
+                log_print(LOG_OK, "Build succeeded: %s (%.2fs)\n",
+                          nstr_cstr(output_path), elapsed);
                 result = 0;
                 goto cleanup;
             }

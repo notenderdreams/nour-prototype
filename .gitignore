@@ -3,3 +3,10 @@
 *.dylib
 *.a
 *.so
+.DS_Store
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.pyc       

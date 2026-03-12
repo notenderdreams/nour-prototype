@@ -31,4 +31,11 @@ typedef enum {
 
 void log_print(LogLevel level, const char *format, ...);
 
+void log_file_init(const char *path);
+void log_file_init_temp(void);
+void log_file_flush_to(const char *path);
+void log_file_close(void);
+void console_out(const char *format, ...);
+int  console_use_color(void);
+
 #endif // LOG_H
