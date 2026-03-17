@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# Example pre-push hook.
+# Exit with a non-zero status to abort push.
+
+# echo "Running tests before push..."
+# cargo test

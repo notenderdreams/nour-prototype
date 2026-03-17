@@ -1,0 +1,23 @@
+[commit]
+template        = "$type($mod): $message"
+ask_description = true
+auto_push       = false
+
+[modules]
+cli = "nour-cli/*"
+core = "nour-core/*"
+
+[categories]
+feat     = "Add a new feature"
+fix      = "Fix a bug"
+docs     = "Documentation changes"
+style    = "Code style / formatting"
+refactor = "Refactor code"
+perf     = "Performance improvement"
+test     = "Add or update tests"
+build    = "Build system changes"
+ci       = "CI/CD changes"
+chore    = "Maintenance / chores"
+revert   = "Revert a commit"
+wip      = "Work in progress"
+none     = "No category prefix"

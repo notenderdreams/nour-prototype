@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Example post-commit hook.
+# Non-zero exit code will not abort (commit already created).
+
+# echo "Committed: $SIT_MESSAGE"

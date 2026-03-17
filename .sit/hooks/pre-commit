@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Example pre-commit hook.
+# Exit with a non-zero status to abort the commit.
+
+# echo "Running checks before commit..."
+# cargo fmt -- --check
+# cargo clippy -- -D warnings

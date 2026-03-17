@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Example post-push hook.
+# Non-zero exit code will not abort push.
+
+# echo "Pushed $SIT_REMOTE/$SIT_BRANCH"
