@@ -1,32 +1,37 @@
 #include <stdio.h>
 #include "dispatch.h"
 
-int cmd_build(const char **args, int n) {
+
+int cmd_build(Context *ctx) {
     printf("building\n");
-    for (int i = 0; i < n; i++) printf("  %s\n", args[i]);
+    for (u32 i = 0; i < ctx->n_args; i++) printf("  %s\n", ctx->args[i]);
     return 0;
 }
 
-int cmd_run(const char **args, int n) {
+
+int cmd_run(Context *ctx) {
     printf("running\n");
-    if (n > 0) printf("  bin: %s\n", args[0]);
+    if (ctx->n_args > 0) printf("  bin: %s\n", ctx->args[0]);
     return 0;
 }
 
-int cmd_clean(const char **args, int n) {
-    (void)args; (void)n;
+
+int cmd_clean(Context *ctx) {
+    (void)ctx;
     printf("cleaning\n");
     return 0;
 }
 
-int cmd_log_show(const char **args, int n) {
-    (void)args; (void)n;
+
+int cmd_log_show(Context *ctx) {
+    (void)ctx;
     printf("log show\n");
     return 0;
 }
 
-int cmd_log_clear(const char **args, int n) {
-    (void)args; (void)n;
+
+int cmd_log_clear(Context *ctx) {
+    (void)ctx;
     printf("log clear\n");
     return 0;
 }

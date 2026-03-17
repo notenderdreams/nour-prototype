@@ -64,7 +64,7 @@ DispatchResult dispatch(App *app, i32 argc, char **argv) {
 
     Command  *cmd       = NULL;
     Command **search_in = app->commands;
-    u32       arg_start = 1;
+    i32       arg_start = 1;
 
     while (arg_start < argc) {
         const char *tok = argv[arg_start];
@@ -82,7 +82,7 @@ DispatchResult dispatch(App *app, i32 argc, char **argv) {
         return DISPATCH_ERR;
     }
 
-    for (u32 i = arg_start; i < argc; ++i) {
+    for (i32 i = arg_start; i < argc; ++i) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             help_cmd(app, cmd);
             return DISPATCH_OK;
@@ -91,10 +91,10 @@ DispatchResult dispatch(App *app, i32 argc, char **argv) {
 
     if (!cmd->action) { help_cmd(app, cmd); return DISPATCH_OK; }
 
-    const char *args[MAX_ARGS];
-    u32 n = 0;
-    for (u32 i = arg_start; i < argc && n < MAX_ARGS; ++i)
-        args[n++] = argv[i];
+    Context ctx = { .cmd = cmd, .app = app, .n_args = 0 };
 
-    return cmd->action(args, n) == 0 ? DISPATCH_OK : DISPATCH_ERR;
+    for (i32 i = arg_start; i < argc && ctx.n_args < MAX_ARGS; ++i)
+        ctx.args[ctx.n_args++] = argv[i];
+
+    return cmd->action(&ctx) == 0 ? DISPATCH_OK : DISPATCH_ERR;
 }
