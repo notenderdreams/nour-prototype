@@ -6,10 +6,11 @@
 
 //  Variables ---------
 #define BUILD_FLAGS \
-    { "profile", 'p',       FLAG_STR,  .val.s = "debug",   "build profile (debug, release)" }, \
-    { "release", NO_SHORT,  FLAG_BOOL, .val.b = false,     "build in release mode"          }, \
-    { "target",  't',       FLAG_STR,  .val.s = "default", "build target"                   }, \
-    { "jobs",    'j',       FLAG_INT,  .val.i = 4,         "parallel jobs"                  }, \
+    { "profile", 'p',       FLAG_STR,  .val.s = "debug",        "build profile (debug, release)" }, \
+    { "release", NO_SHORT,  FLAG_BOOL, .val.b = false,          "build in release mode"          }, \
+    { "target",  't',       FLAG_STR,  .val.s = "default",      "build target"                   }, \
+    { "file",    'f',       FLAG_STR,  .val.s = "./project.nour","project file path"             }, \
+    { "jobs",    'j',       FLAG_INT,  .val.i = 4,              "parallel jobs"                  }, \
     FLAG_END
 
 

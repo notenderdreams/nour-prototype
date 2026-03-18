@@ -27,6 +27,7 @@ i32 cmd_build(Context *ctx) {
     if (flag_bool(ctx, "release")) {
         profile = "release";
     }
+    printf("Project File Path: %s\n", flag_str(ctx, "file"));
     printf("   Building [%s] target '%s' with %d jobs\n", profile, target, jobs);
     return 0;
 }
@@ -39,7 +40,7 @@ i32 cmd_run(Context *ctx) {
     if (flag_bool(ctx, "release")) {
         profile = "release";
     }
-
+    printf("Project File Path: %s\n", flag_str(ctx, "file"));
     printf("   Building [%s] target '%s' with %d jobs\n", profile, target, jobs);
     printf("   Running '%s'\n", target);
     return 0;
