@@ -130,9 +130,17 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
             }
             const char *val = inline_val;
             if (!val) {
-                if (i+1>=argc){fprintf(stderr,"error: '--%s' requires a value\n",buf);return -1;}
-                val=argv[++i];
+                if (i + 1 >= argc) {
+                    fprintf(stderr, "error: '--%s' requires a value\n", buf);
+                    return -1;
+                }
+                if (argv[i + 1][0] == '-') {
+                    fprintf(stderr, "error: '--%s' requires a value\n", buf);
+                    return -1;
+                }
+                val = argv[++i];
             }
+            
             switch(f->type){
                 case FLAG_STR:   f->val.s=val; break;
                 case FLAG_INT:{  char *e; f->val.i=(i32)strtol(val,&e,10);
@@ -153,9 +161,17 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
                 if(f->type==FLAG_BOOL){f->val.b=true;j++;continue;}
                 const char *val;
                 if(arg[j+1]){val=arg+j+1;j=(i32)strlen(arg);}
-                else{
-                    if(i+1>=argc){fprintf(stderr,"error: '-%c' requires a value\n",sc);return -1;}
-                    val=argv[++i];j=(i32)strlen(arg);
+                else {
+                    if (i + 1 >= argc) {
+                        fprintf(stderr, "error: '-%c' requires a value\n", sc);
+                        return -1;
+                    }
+                    if (argv[i + 1][0] == '-') {
+                        fprintf(stderr, "error: '-%c' requires a value\n", sc);
+                        return -1;
+                    }
+                    val = argv[++i];
+                    j = (i32)strlen(arg);
                 }
                 switch(f->type){
                     case FLAG_STR:   f->val.s=val; break;
