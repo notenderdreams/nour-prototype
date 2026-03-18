@@ -23,6 +23,10 @@ static Command *find_cmd(Command **cmds, const char *name) {
     return NULL;
 }
 
+// ANSI color codes
+#define COLOR_BLUE    "\033[34m"
+#define COLOR_RESET   "\033[0m"
+
 static void print_flags(Flag *flags, const char *header) {
     if (!flags || !flags[0].name) return;
     printf("\n%s\n", header);
@@ -33,7 +37,7 @@ static void print_flags(Flag *flags, const char *header) {
         const char *th = f->type == FLAG_STR   ? " <string>" :
                          f->type == FLAG_INT   ? " <int>"    :
                          f->type == FLAG_FLOAT ? " <float>"  : "";
-        printf("   %s--%-16s%s  %s", sh, f->name, th, f->usage ? f->usage : "");
+        printf("   %s" COLOR_BLUE "--%-16s" COLOR_RESET "%s  %s", sh, f->name, th, f->usage ? f->usage : "");
         switch (f->type) {
             case FLAG_BOOL:  if (f->val.b) printf(" (default: true)"); break;
             case FLAG_STR:   if (f->val.s && *f->val.s) printf(" (default: \"%s\")", f->val.s); break;
@@ -47,12 +51,12 @@ static void print_flags(Flag *flags, const char *header) {
 
 static void print_global_flags(void) {
     printf("\nGLOBAL OPTIONS:\n");
-    printf("   -h, --%-16s  show help\n",       "help");
-    printf("       --%-16s  print version\n",   "version");
+    printf("   -h, " COLOR_BLUE "--%-16s" COLOR_RESET "  show help\n",       "help");
+    printf("       " COLOR_BLUE "--%-16s" COLOR_RESET "  print version\n",   "version");
 }
 
 static void help_app(App *app) {
-    printf("   %s - %s\n", app->name, app->description ? app->description : "");
+    printf("%s\n", app->description ? app->description : "");
     printf("\nUSAGE:\n   %s [global options] [command [command options]]\n", app->name);
 
     if (app->version) {
@@ -70,7 +74,7 @@ static void help_app(App *app) {
             snprintf(label, sizeof(label), "%s", cmd->name);
         }
 
-        printf("   %-16s %s\n",
+        printf("   " COLOR_BLUE "%-16s" COLOR_RESET " %s\n",
                label,
                cmd->usage ? cmd->usage : "");
     }
@@ -79,13 +83,13 @@ static void help_app(App *app) {
 }
 
 static void help_cmd(App *app, Command *cmd) {
-    printf("   %s %s - %s\n", app->name, cmd->name,
+    printf("%s - %s\n", cmd->name,
            cmd->description ? cmd->description : (cmd->usage ? cmd->usage : ""));
-    printf("\nUSAGE:\n   %s %s [options]\n", app->name, cmd->name);
+    printf("\nUSAGE:\n   %s " COLOR_BLUE "%s" COLOR_RESET " [options]\n", app->name, cmd->name);
     if (cmd->subcommands[0]) {
         printf("\nCOMMANDS:\n");
         for (i32 i = 0; cmd->subcommands[i]; ++i)
-            printf("   %-16s %s\n", cmd->subcommands[i]->name,
+            printf("   " COLOR_BLUE "%-16s" COLOR_RESET " %s\n", cmd->subcommands[i]->name,
                    cmd->subcommands[i]->usage ? cmd->subcommands[i]->usage : "");
     }
     print_flags(cmd->flags, "OPTIONS:");
