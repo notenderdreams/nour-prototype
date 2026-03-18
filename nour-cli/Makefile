@@ -1,7 +1,7 @@
 CC     = gcc
 CFLAGS = -Wall -Wextra
 TARGET = cli
-SRCS   = dispatch.c main.c cmd.c
+SRCS   = dispatch.c main.c cmd.c ansi.c
 
 $(TARGET): $(SRCS) dispatch.h
 	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS)

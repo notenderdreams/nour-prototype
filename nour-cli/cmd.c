@@ -1,10 +1,11 @@
 #include "cmd.h"
+#include "ansi.h"
 #include <stdio.h>
 
 
 i32 cmd_new(Context *ctx) {
     if (ctx->n_args < 1) {
-        fprintf(stderr,"error: 'new' requires a project name\n");
+        fprintf(stderr,"%s 'new' requires a project name\n", fg.red("error:"));
         return -1;
     }    
 

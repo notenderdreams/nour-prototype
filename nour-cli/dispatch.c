@@ -1,4 +1,5 @@
 #include "dispatch.h"
+#include "ansi.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,10 +24,6 @@ static Command *find_cmd(Command **cmds, const char *name) {
     return NULL;
 }
 
-// ANSI color codes
-#define COLOR_BLUE    "\033[34m"
-#define COLOR_RESET   "\033[0m"
-
 static void print_flags(Flag *flags, const char *header) {
     if (!flags || !flags[0].name) return;
     printf("\n%s\n", header);
@@ -37,7 +34,14 @@ static void print_flags(Flag *flags, const char *header) {
         const char *th = f->type == FLAG_STR   ? " <string>" :
                          f->type == FLAG_INT   ? " <int>"    :
                          f->type == FLAG_FLOAT ? " <float>"  : "";
-        printf("   %s" COLOR_BLUE "--%-16s" COLOR_RESET "%s  %s", sh, f->name, th, f->usage ? f->usage : "");
+
+        char buf[32];
+        snprintf(buf, sizeof(buf), "--%-14s", f->name);
+        char *label = fg.blue(buf);
+        printf("   %s%s  %s", sh, label, f->usage ? f->usage : "");
+        free(label);
+
+        printf("%s", th);
         switch (f->type) {
             case FLAG_BOOL:  if (f->val.b) printf(" (default: true)"); break;
             case FLAG_STR:   if (f->val.s && *f->val.s) printf(" (default: \"%s\")", f->val.s); break;
@@ -50,9 +54,13 @@ static void print_flags(Flag *flags, const char *header) {
 }
 
 static void print_global_flags(void) {
+    char *help_flag    = fg.blue("--help          ");
+    char *version_flag = fg.blue("--version       ");
     printf("\nGLOBAL OPTIONS:\n");
-    printf("   -h, " COLOR_BLUE "--%-16s" COLOR_RESET "  show help\n",       "help");
-    printf("       " COLOR_BLUE "--%-16s" COLOR_RESET "  print version\n",   "version");
+    printf("   -h, %s  show help\n",    help_flag);
+    printf("       %s  print version\n", version_flag);
+    free(help_flag);
+    free(version_flag);
 }
 
 static void help_app(App *app) {
@@ -74,23 +82,29 @@ static void help_app(App *app) {
             snprintf(label, sizeof(label), "%s", cmd->name);
         }
 
-        printf("   " COLOR_BLUE "%-16s" COLOR_RESET " %s\n",
-               label,
-               cmd->usage ? cmd->usage : "");
+        char *colored = fg.blue(label);
+        printf("   %-16s %s\n", colored, cmd->usage ? cmd->usage : "");
+        free(colored);
     }
 
     print_global_flags();
 }
 
 static void help_cmd(App *app, Command *cmd) {
+    char *colored_cmd = fg.blue(cmd->name);
     printf("%s - %s\n", cmd->name,
            cmd->description ? cmd->description : (cmd->usage ? cmd->usage : ""));
-    printf("\nUSAGE:\n   %s " COLOR_BLUE "%s" COLOR_RESET " [options]\n", app->name, cmd->name);
+    printf("\nUSAGE:\n   %s %s [options]\n", app->name, colored_cmd);
+    free(colored_cmd);
+
     if (cmd->subcommands[0]) {
         printf("\nCOMMANDS:\n");
-        for (i32 i = 0; cmd->subcommands[i]; ++i)
-            printf("   " COLOR_BLUE "%-16s" COLOR_RESET " %s\n", cmd->subcommands[i]->name,
+        for (i32 i = 0; cmd->subcommands[i]; ++i) {
+            char *sub = fg.blue(cmd->subcommands[i]->name);
+            printf("   %-16s %s\n", sub,
                    cmd->subcommands[i]->usage ? cmd->subcommands[i]->usage : "");
+            free(sub);
+        }
     }
     print_flags(cmd->flags, "OPTIONS:");
     print_global_flags();
@@ -140,7 +154,7 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
                 }
                 val = argv[++i];
             }
-            
+
             switch(f->type){
                 case FLAG_STR:   f->val.s=val; break;
                 case FLAG_INT:{  char *e; f->val.i=(i32)strtol(val,&e,10);
