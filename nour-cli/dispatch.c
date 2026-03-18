@@ -4,13 +4,13 @@
 #include <string.h>
 
 static Flag *flag_find(Flag *flags, const char *name) {
-    for (i32 i = 0; flags[i].name; i++)
+    for (i32 i = 0; flags[i].name; ++i)
         if (strcmp(flags[i].name, name) == 0) return &flags[i];
     return NULL;
 }
 
 static Flag *flag_find_short(Flag *flags, char c) {
-    for (i32 i = 0; flags[i].name; i++)
+    for (i32 i = 0; flags[i].name; ++i)
         if (flags[i].shorthand == c) return &flags[i];
     return NULL;
 }
@@ -30,7 +30,7 @@ static Command *find_cmd(Command **cmds, const char *name) {
 static void print_flags(Flag *flags, const char *header) {
     if (!flags || !flags[0].name) return;
     printf("\n%s\n", header);
-    for (i32 i = 0; flags[i].name; i++) {
+    for (i32 i = 0; flags[i].name; ++i) {
         Flag *f = &flags[i];
         char sh[6] = "    ";
         if (f->shorthand) snprintf(sh, sizeof(sh), "-%c, ", f->shorthand);
@@ -97,14 +97,14 @@ static void help_cmd(App *app, Command *cmd) {
 }
 
 static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *ctx) {
-    for (i32 i = 0; cmd->flags[i].name; i++) cmd->flags[i]._set = false;
+    for (i32 i = 0; cmd->flags[i].name; ++i) cmd->flags[i]._set = false;
     ctx->n_args = 0;
 
     for (i32 i = start; i < argc; ) {
         const char *arg = argv[i];
 
         if (strcmp(arg, "--") == 0) {
-            i++;
+            ++i;
             while (i < argc && ctx->n_args < MAX_ARGS)
                 ctx->args[ctx->n_args++] = argv[i++];
             break;
@@ -126,7 +126,7 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
             f->_set = true;
             if (f->type == FLAG_BOOL) {
                 f->val.b = inline_val ? (strcmp(inline_val,"true")==0||strcmp(inline_val,"1")==0) : true;
-                i++; continue;
+                ++i; continue;
             }
             const char *val = inline_val;
             if (!val) {
@@ -141,7 +141,7 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
                                  if(*e){fprintf(stderr,"error: '--%s' expects number\n",buf); return -1;} break;}
                 default: break;
             }
-            i++;
+            ++i;
 
         } else if (arg[0]=='-' && arg[1] && arg[1]!='-') {
             i32 j=1;
@@ -166,14 +166,14 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
                     default:break;
                 }
             }
-            i++;
+            ++i;
         } else {
             if(ctx->n_args>=MAX_ARGS){fprintf(stderr,"error: too many arguments\n");return -1;}
-            ctx->args[ctx->n_args++]=arg; i++;
+            ctx->args[ctx->n_args++]=arg; ++i;
         }
     }
 
-    for (i32 i = 0; cmd->flags[i].name; i++)
+    for (i32 i = 0; cmd->flags[i].name; ++i)
         if (cmd->flags[i].required && !cmd->flags[i]._set) {
             fprintf(stderr,"error: required flag '--%s' not provided\n",cmd->flags[i].name);
             return -1;

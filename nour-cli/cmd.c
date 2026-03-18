@@ -1,0 +1,51 @@
+#include "cmd.h"
+#include <stdio.h>
+
+
+i32 cmd_new(Context *ctx) {
+    if (ctx->n_args < 1) {
+        fprintf(stderr,"error: 'new' requires a project name\n");
+        return -1;
+    }    
+
+    printf("   Creating new project: %s\n", ctx->args[0]);
+    return 0;
+}
+
+i32 cmd_init(Context *ctx) {
+    (void)ctx;
+    printf("   Initialize the current directory as a project\n");
+    return 0;
+}
+
+i32 cmd_build(Context *ctx) {
+    const char *profile = flag_str(ctx, "profile");
+    const char *target  = flag_str(ctx, "target");
+    i32         jobs    = flag_int(ctx, "jobs");
+
+    if (flag_bool(ctx, "release")) {
+        profile = "release";
+    }
+    printf("   Building [%s] target '%s' with %d jobs\n", profile, target, jobs);
+    return 0;
+}
+
+i32 cmd_run(Context *ctx) {
+    const char *profile = flag_str(ctx, "profile");
+    const char *target  = flag_str(ctx, "target");
+    i32         jobs    = flag_int(ctx, "jobs");
+
+    if (flag_bool(ctx, "release")) {
+        profile = "release";
+    }
+
+    printf("   Building [%s] target '%s' with %d jobs\n", profile, target, jobs);
+    printf("   Running '%s'\n", target);
+    return 0;
+}
+
+i32 cmd_clean(Context *ctx) {
+    (void)ctx;
+    printf("   Removing build artifacts\n");
+    return 0;
+}
