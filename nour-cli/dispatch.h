@@ -48,6 +48,7 @@ typedef struct {
 
 struct Command {
     const char *name;
+    const char *alias;
     const char *usage;
     const char *description;
     Command    *subcommands[DISPATCH_MAX_COMMANDS];

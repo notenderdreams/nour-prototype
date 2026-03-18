@@ -16,8 +16,10 @@ static Flag *flag_find_short(Flag *flags, char c) {
 }
 
 static Command *find_cmd(Command **cmds, const char *name) {
-    for (i32 i = 0; cmds[i]; ++i)
+    for (i32 i = 0; cmds[i]; ++i) {
         if (strcmp(cmds[i]->name, name) == 0) return cmds[i];
+        if (cmds[i]->alias && strcmp(cmds[i]->alias, name) == 0) return cmds[i];
+    }
     return NULL;
 }
 
@@ -52,11 +54,27 @@ static void print_global_flags(void) {
 static void help_app(App *app) {
     printf("   %s - %s\n", app->name, app->description ? app->description : "");
     printf("\nUSAGE:\n   %s [global options] [command [command options]]\n", app->name);
-    if (app->version) printf("\nVERSION:\n   %s\n", app->version);
+
+    if (app->version) {
+        printf("\nVERSION:\n   %s\n", app->version);
+    }
+
     printf("\nCOMMANDS:\n");
-    for (i32 i = 0; app->commands[i]; ++i)
-        printf("   %-16s %s\n", app->commands[i]->name,
-               app->commands[i]->usage ? app->commands[i]->usage : "");
+    for (i32 i = 0; app->commands[i]; ++i) {
+        Command *cmd = app->commands[i];
+        char label[64];
+
+        if (cmd->alias) {
+            snprintf(label, sizeof(label), "%s, %s", cmd->name, cmd->alias);
+        } else {
+            snprintf(label, sizeof(label), "%s", cmd->name);
+        }
+
+        printf("   %-16s %s\n",
+               label,
+               cmd->usage ? cmd->usage : "");
+    }
+
     print_global_flags();
 }
 

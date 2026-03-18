@@ -31,6 +31,7 @@ i32 cmd_clean(Context *ctx) {
 
 static Command build_cmd = {
     .name   = "build",
+    .alias  = "b",
     .usage  = "Compile the project",
     .action = cmd_build,
     .flags  = {
@@ -42,6 +43,7 @@ static Command build_cmd = {
 
 static Command run_cmd = {
     .name        = "run",
+    .alias       = "r",
     .usage       = "Build and run the binary",
     .description = "Builds then runs the binary.\nPass -- to forward args: nour run --release -- --flag value",
     .action      = cmd_run,
