@@ -1,14 +1,18 @@
 CC     = gcc
 CFLAGS = -Wall -Wextra
-TARGET = cli
-SRCS   = dispatch.c main.c cmd.c ansi.c
+TARGET = nour
+SRCS   = dispatch.c main.c cmd.c ansi.c fn.c fs.c
+BUILD  = build
+OUT    = $(BUILD)/$(TARGET)
 
-$(TARGET): $(SRCS) dispatch.h
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS)
+$(BUILD):
+	mkdir -p $(BUILD)
 
-run: $(TARGET)
-	./$(TARGET) $(ARGS)
+$(OUT): $(SRCS) dispatch.h | $(BUILD)
+	$(CC) $(CFLAGS) -o $(OUT) $(SRCS)
+
+run: $(OUT)
+	./$(OUT) $(filter-out $@,$(MAKECMDGOALS))
 
 clean:
-	rm -f $(TARGET)
-
+	rm -rf $(BUILD)

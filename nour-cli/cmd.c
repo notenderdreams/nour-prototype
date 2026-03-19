@@ -1,5 +1,6 @@
 #include "cmd.h"
 #include "ansi.h"
+#include "fn.h"
 #include <stdio.h>
 
 
@@ -9,14 +10,15 @@ i32 cmd_new(Context *ctx) {
         return -1;
     }    
 
-    printf("   Creating new project: %s\n", ctx->args[0]);
-    return 0;
+    printf("Creating new project: %s\n", ctx->args[0]);
+    return fn_new_project(ctx->args[0]);
 }
 
 i32 cmd_init(Context *ctx) {
-    (void)ctx;
-    printf("   Initialize the current directory as a project\n");
-    return 0;
+    const char *name = ctx->n_args > 0 ? ctx->args[0] : NULL;
+
+    printf("Initialize the current directory as a project\n");
+    return fn_init(name);
 }
 
 i32 cmd_build(Context *ctx) {

@@ -19,7 +19,7 @@ static i32 _rm_entry(const char *fpath, const struct stat *sb,
 
 /* Return codes:
  *  0  -> success / path is a directory
- *  1  -> path exists but is not a directory
+ *  1  -> exists but is not a directory
  *  2  -> path does not exist
  * -1  -> invalid args or system error
  *        (permissions, bad path, etc.)
