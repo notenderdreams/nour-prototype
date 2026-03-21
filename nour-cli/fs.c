@@ -23,6 +23,8 @@ static i32 _rm_entry(const char *fpath, const struct stat *sb,
  *  2  -> path does not exist
  * -1  -> invalid args or system error
  *        (permissions, bad path, etc.)
+    ! Note : the success code is pretty much opposite of the usual convention, 
+    !       will fix that later 
  */
 i32 check_dir_exists(const char *path) {
     if (!path)
@@ -99,7 +101,8 @@ i32 remove_dir(const char *path) {
  * -2  -> fopen failed
  * -3  -> write failed
  */
-i32 create_file(const char *content, const char *file_path) {
+i32 create_file(const char *file_path, const char *content) {
+
     if (!file_path || !content)
         return -1;
 
