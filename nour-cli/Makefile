@@ -5,6 +5,8 @@ SRCS   = dispatch.c main.c cmd.c ansi.c fn.c fs.c
 BUILD  = build
 OUT    = $(BUILD)/$(TARGET)
 
+all: $(OUT)
+
 $(BUILD):
 	mkdir -p $(BUILD)
 

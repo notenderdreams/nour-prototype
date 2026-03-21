@@ -1,24 +1,33 @@
 #include "cmd.h"
 #include "ansi.h"
 #include "fn.h"
+#include "log.h"
+#include <stdlib.h>
 #include <stdio.h>
 
 
 i32 cmd_new(Context *ctx) {
     if (ctx->n_args < 1) {
-        fprintf(stderr,"%s 'new' requires a project name\n", fg.red("error:"));
+        err("'new' requires a project name");
         return -1;
-    }    
-
-    printf("Creating new project: %s\n", ctx->args[0]);
-    return fn_new_project(ctx->args[0]);
+    }
+    status_info("Creating", "new project: %s", ctx->args[0]);
+    i32 result = fn_new_project(ctx->args[0]);
+    if (result == 0) {
+        ok("Project '%s' created successfully!", ctx->args[0]);
+    }
+    return result;
 }
 
 i32 cmd_init(Context *ctx) {
     const char *name = ctx->n_args > 0 ? ctx->args[0] : NULL;
 
-    printf("Initialize the current directory as a project\n");
-    return fn_init(name);
+    status_info("Initializing", "current directory as a project");
+    i32 result = fn_init(name);
+    if (result == 0) {
+        ok("Project initialized successfully!");
+    }
+    return result;
 }
 
 i32 cmd_build(Context *ctx) {
@@ -29,8 +38,8 @@ i32 cmd_build(Context *ctx) {
     if (flag_bool(ctx, "release")) {
         profile = "release";
     }
-    printf("Project File Path: %s\n", flag_str(ctx, "file"));
-    printf("   Building [%s] target '%s' with %d jobs\n", profile, target, jobs);
+    info("Project File Path: %s", flag_str(ctx, "file"));
+    status("build", "[%s] target '%s' with %d jobs", profile, target, jobs);
     return 0;
 }
 
@@ -42,14 +51,14 @@ i32 cmd_run(Context *ctx) {
     if (flag_bool(ctx, "release")) {
         profile = "release";
     }
-    printf("Project File Path: %s\n", flag_str(ctx, "file"));
-    printf("   Building [%s] target '%s' with %d jobs\n", profile, target, jobs);
-    printf("   Running '%s'\n", target);
+    info("Project File Path: %s", flag_str(ctx, "file"));
+    status("build", "[%s] target '%s' with %d jobs", profile, target, jobs);
+    status("run", "Running '%s'", target);
     return 0;
 }
 
 i32 cmd_clean(Context *ctx) {
     (void)ctx;
-    printf("   Removing build artifacts\n");
+    status("clean", "Removing build artifacts");
     return 0;
 }

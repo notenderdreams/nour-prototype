@@ -1,5 +1,6 @@
 #include "dispatch.h"
 #include "ansi.h"
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -114,6 +115,7 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
     for (i32 i = 0; cmd->flags[i].name; ++i) cmd->flags[i]._set = false;
     ctx->n_args = 0;
 
+
     for (i32 i = start; i < argc; ) {
         const char *arg = argv[i];
 
@@ -131,12 +133,12 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
             char buf[128]; const char *inline_val = NULL;
             if (eq) {
                 size_t len = (size_t)(eq - key);
-                if (len >= sizeof(buf)) { fprintf(stderr,"error: flag name too long\n"); return -1; }
+                if (len >= sizeof(buf)) { err("flag name too long"); return -1; }
                 memcpy(buf, key, len); buf[len] = '\0'; inline_val = eq + 1;
             } else { strncpy(buf, key, sizeof(buf)-1); buf[sizeof(buf)-1] = '\0'; }
 
             Flag *f = flag_find(cmd->flags, buf);
-            if (!f) { fprintf(stderr,"error: unknown flag '--%s'\n", buf); return -1; }
+            if (!f) { err("unknown flag '--%s'", buf); return -1; }
             f->_set = true;
             if (f->type == FLAG_BOOL) {
                 f->val.b = inline_val ? (strcmp(inline_val,"true")==0||strcmp(inline_val,"1")==0) : true;
@@ -145,11 +147,11 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
             const char *val = inline_val;
             if (!val) {
                 if (i + 1 >= argc) {
-                    fprintf(stderr, "error: '--%s' requires a value\n", buf);
+                    err("'--%s' requires a value", buf);
                     return -1;
                 }
                 if (argv[i + 1][0] == '-') {
-                    fprintf(stderr, "error: '--%s' requires a value\n", buf);
+                    err("'--%s' requires a value", buf);
                     return -1;
                 }
                 val = argv[++i];
@@ -158,9 +160,9 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
             switch(f->type){
                 case FLAG_STR:   f->val.s=val; break;
                 case FLAG_INT:{  char *e; f->val.i=(i32)strtol(val,&e,10);
-                                 if(*e){fprintf(stderr,"error: '--%s' expects integer\n",buf);return -1;} break;}
+                                 if(*e){err("'--%s' expects integer",buf);return -1;} break;}
                 case FLAG_FLOAT:{char *e; f->val.f=(f32)strtof(val,&e);
-                                 if(*e){fprintf(stderr,"error: '--%s' expects number\n",buf); return -1;} break;}
+                                 if(*e){err("'--%s' expects number",buf); return -1;} break;}
                 default: break;
             }
             ++i;
@@ -170,18 +172,18 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
             while (arg[j]) {
                 char sc=arg[j];
                 Flag *f=flag_find_short(cmd->flags,sc);
-                if(!f){fprintf(stderr,"error: unknown flag '-%c'\n",sc);return -1;}
+                if(!f){err("unknown flag '-%c'",sc);return -1;}
                 f->_set=true;
                 if(f->type==FLAG_BOOL){f->val.b=true;j++;continue;}
                 const char *val;
                 if(arg[j+1]){val=arg+j+1;j=(i32)strlen(arg);}
                 else {
                     if (i + 1 >= argc) {
-                        fprintf(stderr, "error: '-%c' requires a value\n", sc);
+                        err("'-%c' requires a value", sc);
                         return -1;
                     }
                     if (argv[i + 1][0] == '-') {
-                        fprintf(stderr, "error: '-%c' requires a value\n", sc);
+                        err("'-%c' requires a value", sc);
                         return -1;
                     }
                     val = argv[++i];
@@ -190,15 +192,15 @@ static i32 parse_flags(Command *cmd, i32 argc, char **argv, i32 start, Context *
                 switch(f->type){
                     case FLAG_STR:   f->val.s=val; break;
                     case FLAG_INT:{  char *e;f->val.i=(i32)strtol(val,&e,10);
-                                     if(*e){fprintf(stderr,"error: '-%c' expects integer\n",sc);return -1;}break;}
+                                     if(*e){err("'-%c' expects integer",sc);return -1;}break;}
                     case FLAG_FLOAT:{char *e;f->val.f=(f32)strtof(val,&e);
-                                     if(*e){fprintf(stderr,"error: '-%c' expects number\n",sc);return -1;}break;}
+                                     if(*e){err("'-%c' expects number",sc);return -1;}break;}
                     default:break;
                 }
             }
             ++i;
         } else {
-            if(ctx->n_args>=MAX_ARGS){fprintf(stderr,"error: too many arguments\n");return -1;}
+            if(ctx->n_args>=MAX_ARGS){err("too many arguments");return -1;}
             ctx->args[ctx->n_args++]=arg; ++i;
         }
     }

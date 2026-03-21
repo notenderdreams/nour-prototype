@@ -1,6 +1,8 @@
 #include "fn.h"
 #include "fs.h"
+#include "log.h"
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
@@ -36,7 +38,11 @@ static i32 write_project_file(const char* name, const char* path) {
         "};\n",
         name
     );
-    return create_file(path, content);
+    i32 result = create_file(path, content);
+    if (result == 0) {
+        status("Created", "%s", path);
+    }
+    return result;
 
 }
 
@@ -47,9 +53,10 @@ static i32 write_main_file(const char* name, bool is_new_project) {
 
     i32 result = create_dir(path);
     if (result) {
-        fprintf(stderr, "error: failed to create 'src' directory\n");
+        err("failed to create 'src' directory");
         return result;
     }
+    status("Created", "%s/", path);
    
     char content[1024];
     snprintf(content, sizeof(content),
@@ -63,24 +70,29 @@ static i32 write_main_file(const char* name, bool is_new_project) {
     );
 
     snprintf(path, sizeof(path), "%s/src/main.c", basedir); 
-    return create_file(path, content);
+    result = create_file(path, content);
+    if (result == 0) {
+        status("Created", "%s", path);
+    }
+    return result;
 }
 
 i32 fn_new_project(const char* project_name) {
     if (!is_valid_project_name(project_name)) {
-        fprintf(stderr, "error: invalid project name '%s'\n", project_name);
+        err("invalid project name '%s'", project_name);
         return -1;
     }
 
     if (!check_dir_exists(project_name)) {
-        fprintf(stderr, "error: directory '%s' already exists\n", project_name);
+        err("directory '%s' already exists", project_name);
         return -1;
     }
 
     if (create_dir(project_name)) {
-        fprintf(stderr, "error: failed to create directory '%s'\n", project_name);
+        err("failed to create directory '%s'", project_name);
         return -2;
     }
+    status("Created", "%s/", project_name);
     char path[PATH_MAX];
     snprintf(path, sizeof(path), "%s/%s", project_name, PROJECT_FILE_NAME);
 
@@ -103,12 +115,12 @@ i32 fn_init(const char *project_name) {
     strncpy(name_buffer, project_name, PATH_MAX);
 
     if (!is_valid_project_name(name_buffer)) {
-        fprintf(stderr, "error: current directory name '%s' is invalid for a C identifier\n", name_buffer);
+        err("current directory name '%s' is invalid for a C identifier", name_buffer);
         return -1;
     }
 
     if (check_dir_exists(PROJECT_FILE_NAME) == 0) {
-        fprintf(stderr, "error: %s already exists in this directory\n", PROJECT_FILE_NAME);
+        err("%s already exists in this directory", PROJECT_FILE_NAME);
         return -1;
     }
 
