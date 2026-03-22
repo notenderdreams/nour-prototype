@@ -31,16 +31,14 @@ i32 cmd_init(Context *ctx) {
 }
 
 i32 cmd_build(Context *ctx) {
-    const char *profile = flag_str(ctx, "profile");
-    const char *target  = flag_str(ctx, "target");
-    i32         jobs    = flag_int(ctx, "jobs");
+    BuildInfo info = {
+        .file    = flag_str(ctx, "file"),
+        .profile = flag_str(ctx, "profile"),
+        .target  = flag_str(ctx, "target"),
+        .jobs    = flag_int(ctx, "jobs")
+    };
 
-    if (flag_bool(ctx, "release")) {
-        profile = "release";
-    }
-    info("Project File Path: %s", flag_str(ctx, "file"));
-    status("build", "[%s] target '%s' with %d jobs", profile, target, jobs);
-    return 0;
+    return fn_build(&info);
 }
 
 i32 cmd_run(Context *ctx) {

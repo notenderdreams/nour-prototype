@@ -128,3 +128,15 @@ i32 fn_init(const char *project_name) {
         return -2;
     return write_main_file(name_buffer, false);
 }
+
+
+i32 fn_build(const BuildInfo *info) {
+    create_dir("build");
+    if (check_dir_exists(info->file) != 1) {
+        err("project file '%s' not found", info->file);
+        return -1;
+    }
+    status("build", "Target '%s', profile '%s', jobs %d",
+        info->target, info->profile, info->jobs);
+    return 0;
+}
