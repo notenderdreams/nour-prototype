@@ -14,7 +14,7 @@ const char* nour_build(const char *file_path, const char *target,
     mkdir("build", 0755);
 
     static const char *preprocessed_path = "build/project.nour.c";
-    static NourDecls decls;
+    Vector decls = vec_create();
 
     if (nour_preprocess(file_path, preprocessed_path, &decls) != 0)
         return NULL;

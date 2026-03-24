@@ -266,7 +266,7 @@ static void resolve_include_path(const char *base_file, const char *include_name
  *   - everything else    -> written through unchanged
  */
 static int preprocess_recursive(const char *input_path, const char *base_dir,
-                                 FILE *out, NourDecls *decls,
+                                 FILE *out, Vector *decls,
                                  const char **visited, u64 *visited_count) {
     for (u64 i = 0; i < *visited_count; ++i)
         if (!strcmp(visited[i], input_path)) return 0;
@@ -319,11 +319,17 @@ static int preprocess_recursive(const char *input_path, const char *base_dir,
         /* top-level declaration */
         if (!in_decl && depth == 0 && match_decl(line, type_str, sym)) {
             NourDeclType dtype = decl_type_from_str(type_str);
-            if (dtype != (NourDeclType)-1 && decls->count < NOUR_DECL_LIMIT) {
-                decls->decls[decls->count].type = dtype;
-                strncpy(decls->decls[decls->count].name, sym, NOUR_IDENT_LEN - 1);
-                decls->decls[decls->count].name[NOUR_IDENT_LEN - 1] = '\0';
-                decls->count++;
+            if (dtype != (NourDeclType)-1) {
+                NourDecl *d = malloc(sizeof(NourDecl));
+                if (!d) {
+                    fprintf(stderr, "error: out of memory\n");
+                    fclose(in);
+                    return 1;
+                }
+                d->type = dtype;
+                strncpy(d->name, sym, NOUR_IDENT_LEN - 1);
+                d->name[NOUR_IDENT_LEN - 1] = '\0';
+                vec_push(*decls, d);
             }
             fputs(line, out);
             depth   = 1;
@@ -449,14 +455,14 @@ static int preprocess_recursive(const char *input_path, const char *base_dir,
  * [Public entry point]
  * Opens output_path for writing, computes the root base_dir from
  * input_path, then kicks off preprocess_recursive.
- * On success, out->decls contains every declaration found across the
- * file and all its #include'd .nour files, and output_path holds the
- * transformed valid-C source ready to be compiled into a .so.
+ * On success, decls contains every NourDecl* found across the file
+ * and all its #include'd .nour files, heap-allocated and pushed.
+ * Caller owns cleanup: free each element then vec_destroy.
+ * output_path holds the transformed valid-C source ready to be
+ * compiled into a .so.
  * Returns 0 on success, 1 on any error.
  */
-int nour_preprocess(const char *input_path, const char *output_path, NourDecls *out) {
-    out->count = 0;
-
+int nour_preprocess(const char *input_path, const char *output_path, Vector *decls) {
     FILE *f = fopen(output_path, "w");
     if (!f) {
         fprintf(stderr, "error: cannot open output: %s\n", output_path);
@@ -470,7 +476,7 @@ int nour_preprocess(const char *input_path, const char *output_path, NourDecls *
     get_base_dir(input_path, base_dir, sizeof(base_dir));
 
     int rc = preprocess_recursive(input_path, base_dir, f,
-                                  out, visited, &visited_count);
+                                  decls, visited, &visited_count);
     fclose(f);
     return rc;
 }

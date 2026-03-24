@@ -17,9 +17,9 @@
 #define PREPROCESS_H
 
 #include "types.h"
+#include "vector.h"
 #include <limits.h>
 
-#define NOUR_DECL_LIMIT    64   /* max declarations per .nour file        */
 #define NOUR_IDENT_LEN     64   /* max length of a type or symbol name    */
 #define NOUR_IMPORT_LIMIT  16   /* max #include'd .nour files per project */
 
@@ -44,11 +44,6 @@ typedef struct {
 } NourDecl;
 
 
-typedef struct {
-    NourDecl decls[NOUR_DECL_LIMIT];
-    u64      count;
-} NourDecls;
-
-int nour_preprocess(const char *input_path, const char *output_path, NourDecls *out);
+int nour_preprocess(const char *input_path, const char *output_path, Vector *out);
 
 #endif /* PREPROCESS_H */

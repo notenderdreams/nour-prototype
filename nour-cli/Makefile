@@ -5,7 +5,7 @@ BUILD   = build
 OUT     = $(BUILD)/$(TARGET)
 
 CLI_SRCS  = main.c dispatch.c cmd.c ansi.c fn.c fs.c
-CORE_SRCS = ../nour-core/core.c ../nour-core/preprocess.c
+CORE_SRCS = ../nour-core/*.c
 
 SRCS = $(CLI_SRCS) $(CORE_SRCS)
 
